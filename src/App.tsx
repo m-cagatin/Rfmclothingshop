@@ -24,6 +24,8 @@ import { KidsPage } from "./pages/KidsPage";
 import { UnisexPage } from "./pages/UnisexPage";
 import { CustomDesignPage } from "./pages/CustomDesignPage";
 import { CustomProductsPage } from "./pages/CustomProductsPage";
+import { CustomProductDetailsPage } from "./pages/CustomProductDetailsPage";
+import { CustomDesignPreviewPage } from "./pages/CustomDesignPreviewPage";
 import { ProductDetailsPage } from "./pages/ProductDetailsPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { OrderConfirmationPage } from "./pages/OrderConfirmationPage";
@@ -40,7 +42,9 @@ function AppContent() {
   );
 
   // Hide header on Custom Design page
-  const showHeader = location.pathname !== "/custom-design";
+  const showHeader =
+    location.pathname !== "/custom-design" &&
+    location.pathname !== "/custom-design-preview";
 
   const handleAddToCart = (productId: string) => {
     // Mock product lookup - in a real app, this would come from a central data store
@@ -537,8 +541,16 @@ function AppContent() {
               element={<CustomDesignPage />}
             />
             <Route
+              path="/custom-design-preview"
+              element={<CustomDesignPreviewPage />}
+            />
+            <Route
               path="/custom-products"
               element={<CustomProductsPage />}
+            />
+            <Route
+              path="/custom-product/:id"
+              element={<CustomProductDetailsPage />}
             />
             <Route
               path="/product/:id"
