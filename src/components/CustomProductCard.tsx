@@ -23,7 +23,33 @@ export function CustomProductCard({ id, name, price, image, category, isNew }: C
 
   const handleCustomizeClick = () => {
     requireAuth(() => {
-      navigate('/custom-design');
+      // Extract subcategory from product name
+      let subcategory = '';
+      if (name.includes('Round Neck')) {
+        subcategory = 'Round Neck';
+      } else if (name.includes('V Neck')) {
+        subcategory = 'V Neck';
+      } else if (name.includes('Chinese Collar')) {
+        subcategory = 'Chinese Collar';
+      } else if (name.includes('Varsity')) {
+        subcategory = 'Varsity Jacket';
+      } else if (name.includes('Premium Cotton Hoodie')) {
+        subcategory = 'Premium Cotton';
+      } else if (name.includes('Polo')) {
+        subcategory = 'Polo';
+      } else if (name.includes('Kids')) {
+        subcategory = name.includes('Polo') ? 'Kids Polo' : 'Kids T-Shirt';
+      }
+      
+      // Pass category, subcategory, and product info to the design page
+      navigate('/custom-design', { 
+        state: { 
+          category,
+          subcategory,
+          productName: name,
+          productId: id 
+        } 
+      });
     });
   };
 

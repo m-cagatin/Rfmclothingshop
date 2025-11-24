@@ -208,7 +208,7 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
                 isActive('/custom-products') ? 'font-medium' : ''
               }`}
             >
-              Custom Design
+              Customize Clothing
               {isActive('/custom-products') && (
                 <span className="absolute -bottom-[21px] left-0 right-0 h-0.5 bg-black"></span>
               )}
