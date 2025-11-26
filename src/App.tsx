@@ -1,3 +1,25 @@
+import { HomePage } from "./pages/HomePage";
+import { NewArrivalsPage } from "./pages/NewArrivalsPage";
+import { MenPage } from "./pages/MenPage";
+import { WomenPage } from "./pages/WomenPage";
+import { KidsPage } from "./pages/KidsPage";
+import { UnisexPage } from "./pages/UnisexPage";
+import { CustomDesignPage } from "./pages/CustomDesignPage";
+import { CustomProductsPage } from "./pages/CustomProductsPage";
+import { CustomProductDetailsPage } from "./pages/CustomProductDetailsPage";
+import { CustomDesignPreviewPage } from "./pages/CustomDesignPreviewPage";
+import { ProductDetailsPage } from "./pages/ProductDetailsPage";
+import { CheckoutPage } from "./pages/CheckoutPage";
+import { OrderConfirmationPage } from "./pages/OrderConfirmationPage";
+import { OrderTrackingPage } from "./pages/OrderTrackingPage";
+import { PaymentVerificationPage } from "./pages/admin/PaymentVerificationPage";
+import { OrdersPage } from "./pages/admin/OrdersPage";
+import { CustomizableProductsPage } from "./pages/admin/CustomizableProductsPage";
+import { EmployeesPage } from "./pages/admin/EmployeesPage";
+import { ReportsPage } from "./pages/admin/ReportsPage";
+import { CashFlowPage } from "./pages/admin/CashFlowPage";
+import { useAuth } from "./contexts/AuthContext";
+
 import { useState } from "react";
 import {
   BrowserRouter as Router,
@@ -16,20 +38,6 @@ import {
 import { AuthDialog } from "./components/AuthDialog";
 import { AuthProvider } from "./contexts/AuthContext";
 import { Toaster } from "./components/ui/sonner";
-import { HomePage } from "./pages/HomePage";
-import { NewArrivalsPage } from "./pages/NewArrivalsPage";
-import { MenPage } from "./pages/MenPage";
-import { WomenPage } from "./pages/WomenPage";
-import { KidsPage } from "./pages/KidsPage";
-import { UnisexPage } from "./pages/UnisexPage";
-import { CustomDesignPage } from "./pages/CustomDesignPage";
-import { CustomProductsPage } from "./pages/CustomProductsPage";
-import { CustomProductDetailsPage } from "./pages/CustomProductDetailsPage";
-import { CustomDesignPreviewPage } from "./pages/CustomDesignPreviewPage";
-import { ProductDetailsPage } from "./pages/ProductDetailsPage";
-import { CheckoutPage } from "./pages/CheckoutPage";
-import { OrderConfirmationPage } from "./pages/OrderConfirmationPage";
-import { OrderTrackingPage } from "./pages/OrderTrackingPage";
 
 function AppContent() {
   const location = useLocation();
@@ -44,7 +52,8 @@ function AppContent() {
   // Hide header on Custom Design page
   const showHeader =
     location.pathname !== "/custom-design" &&
-    location.pathname !== "/custom-design-preview";
+    location.pathname !== "/custom-design-preview" &&
+    !location.pathname.startsWith("/admin");
 
   const handleAddToCart = (productId: string) => {
     // Mock product lookup - in a real app, this would come from a central data store
@@ -578,6 +587,30 @@ function AppContent() {
             <Route
               path="/order-tracking"
               element={<OrderTrackingPage />}
+            />
+            <Route
+              path="/admin/payment-verification"
+              element={<PaymentVerificationPage />}
+            />
+            <Route
+              path="/admin/orders"
+              element={<OrdersPage />}
+            />
+            <Route
+              path="/admin/customizable-products"
+              element={<CustomizableProductsPage />}
+            />
+            <Route
+              path="/admin/employees"
+              element={<EmployeesPage />}
+            />
+            <Route
+              path="/admin/reports"
+              element={<ReportsPage />}
+            />
+            <Route
+              path="/admin/cash-flow"
+              element={<CashFlowPage />}
             />
             <Route
               path="*"

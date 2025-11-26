@@ -28,6 +28,8 @@ import {
   Check,
   Package
 } from 'lucide-react';
+import whiteTshirtFront from 'figma:asset/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
+import whiteTshirtBack from 'figma:asset/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
 
 type ViewSide = 'front' | 'back';
 
@@ -56,27 +58,27 @@ interface LayerItem {
   }[];
 }
 
-// Category-specific clothing images - Better quality mockups
+// Category-specific clothing images - Using uploaded white t-shirt mockups
 const categoryImages: Record<string, { front: string; back: string }> = {
   'T-Shirt': {
-    front: 'https://images.unsplash.com/photo-1618354691551-44de113f0164?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwbGFpbiUyMHdoaXRlJTIwdHNoaXJ0JTIwbW9ja3VwfGVufDF8fHx8MTc2Mzk5MTM2M3ww&ixlib=rb-4.1.0&q=80&w=1080',
-    back: 'https://images.unsplash.com/photo-1566969208329-c6bcccc57bb2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHRzaGlydCUyMGJhY2slMjB2aWV3fGVufDF8fHx8MTc2Mzk5MTM2M3ww&ixlib=rb-4.1.0&q=80&w=1080',
+    front: whiteTshirtFront,
+    back: whiteTshirtBack,
   },
   'Jacket': {
-    front: 'https://images.unsplash.com/photo-1577595130703-4c61a9256b34?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHZhcnNpdHklMjBqYWNrZXQlMjBtb2NrdXB8ZW58MXx8fHwxNzYzOTkxMzYzfDA&ixlib=rb-4.1.0&q=80&w=1080',
-    back: 'https://images.unsplash.com/photo-1577595130703-4c61a9256b34?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHZhcnNpdHklMjBqYWNrZXQlMjBtb2NrdXB8ZW58MXx8fHwxNzYzOTkxMzYzfDA&ixlib=rb-4.1.0&q=80&w=1080',
+    front: whiteTshirtFront,
+    back: whiteTshirtBack,
   },
   'Hoodie': {
-    front: 'https://images.unsplash.com/photo-1685328403732-64be6bb9d112?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMGhvb2RpZSUyMG1vY2t1cCUyMGZyb250fGVufDF8fHx8MTc2Mzk5MTM2NHww&ixlib=rb-4.1.0&q=80&w=1080',
-    back: 'https://images.unsplash.com/photo-1685328403732-64be6bb9d112?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMGhvb2RpZSUyMG1vY2t1cCUyMGZyb250fGVufDF8fHx8MTc2Mzk5MTM2NHww&ixlib=rb-4.1.0&q=80&w=1080',
+    front: whiteTshirtFront,
+    back: whiteTshirtBack,
   },
   'Shirt': {
-    front: 'https://images.unsplash.com/photo-1671438118097-479e63198629?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHBvbG8lMjBzaGlydCUyMG1vY2t1cHxlbnwxfHx8fDE3NjM5OTEzNjR8MA&ixlib=rb-4.1.0&q=80&w=1080',
-    back: 'https://images.unsplash.com/photo-1671438118097-479e63198629?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHBvbG8lMjBzaGlydCUyMG1vY2t1cHxlbnwxfHx8fDE3NjM5OTEzNjR8MA&ixlib=rb-4.1.0&q=80&w=1080',
+    front: whiteTshirtFront,
+    back: whiteTshirtBack,
   },
   'Kids': {
-    front: 'https://images.unsplash.com/photo-1618354691551-44de113f0164?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwbGFpbiUyMHdoaXRlJTIwdHNoaXJ0JTIwbW9ja3VwfGVufDF8fHx8MTc2Mzk5MTM2M3ww&ixlib=rb-4.1.0&q=80&w=1080',
-    back: 'https://images.unsplash.com/photo-1566969208329-c6bcccc57bb2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHRzaGlydCUyMGJhY2slMjB2aWV3fGVufDF8fHx8MTc2Mzk5MTM2M3ww&ixlib=rb-4.1.0&q=80&w=1080',
+    front: whiteTshirtFront,
+    back: whiteTshirtBack,
   },
 };
 
@@ -88,6 +90,12 @@ export function CustomDesignPage() {
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isClothingPanelOpen, setIsClothingPanelOpen] = useState(false);
+  const [isUploadPanelOpen, setIsUploadPanelOpen] = useState(false);
+  const [isTextPanelOpen, setIsTextPanelOpen] = useState(false);
+  const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
+  const [isGraphicsPanelOpen, setIsGraphicsPanelOpen] = useState(false);
+  const [isTemplatesPanelOpen, setIsTemplatesPanelOpen] = useState(false);
+  const [isPatternsPanelOpen, setIsPatternsPanelOpen] = useState(false);
   const [isProductionCostOpen, setIsProductionCostOpen] = useState(true);
   const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
   const [selectedSize, setSelectedSize] = useState('medium');
@@ -449,6 +457,54 @@ export function CustomDesignPage() {
   const handleToolClick = (toolId: string) => {
     if (toolId === 'back') {
       navigate('/');
+    } else if (toolId === 'upload') {
+      setIsUploadPanelOpen(!isUploadPanelOpen);
+      setIsTextPanelOpen(false);
+      setIsLibraryPanelOpen(false);
+      setIsGraphicsPanelOpen(false);
+      setIsTemplatesPanelOpen(false);
+      setIsPatternsPanelOpen(false);
+      setActiveTool('upload');
+    } else if (toolId === 'text') {
+      setIsTextPanelOpen(!isTextPanelOpen);
+      setIsUploadPanelOpen(false);
+      setIsLibraryPanelOpen(false);
+      setIsGraphicsPanelOpen(false);
+      setIsTemplatesPanelOpen(false);
+      setIsPatternsPanelOpen(false);
+      setActiveTool('text');
+    } else if (toolId === 'library') {
+      setIsLibraryPanelOpen(!isLibraryPanelOpen);
+      setIsUploadPanelOpen(false);
+      setIsTextPanelOpen(false);
+      setIsGraphicsPanelOpen(false);
+      setIsTemplatesPanelOpen(false);
+      setIsPatternsPanelOpen(false);
+      setActiveTool('library');
+    } else if (toolId === 'graphics') {
+      setIsGraphicsPanelOpen(!isGraphicsPanelOpen);
+      setIsUploadPanelOpen(false);
+      setIsTextPanelOpen(false);
+      setIsLibraryPanelOpen(false);
+      setIsTemplatesPanelOpen(false);
+      setIsPatternsPanelOpen(false);
+      setActiveTool('graphics');
+    } else if (toolId === 'templates') {
+      setIsTemplatesPanelOpen(!isTemplatesPanelOpen);
+      setIsUploadPanelOpen(false);
+      setIsTextPanelOpen(false);
+      setIsLibraryPanelOpen(false);
+      setIsGraphicsPanelOpen(false);
+      setIsPatternsPanelOpen(false);
+      setActiveTool('templates');
+    } else if (toolId === 'patterns') {
+      setIsPatternsPanelOpen(!isPatternsPanelOpen);
+      setIsUploadPanelOpen(false);
+      setIsTextPanelOpen(false);
+      setIsLibraryPanelOpen(false);
+      setIsGraphicsPanelOpen(false);
+      setIsTemplatesPanelOpen(false);
+      setActiveTool('patterns');
     } else {
       setActiveTool(toolId);
     }
@@ -788,6 +844,304 @@ export function CustomDesignPage() {
             </div>
           )}
 
+          {/* Upload Image Panel - LEFT SIDE */}
+          {isUploadPanelOpen && (
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+              <div className="h-full flex flex-col">
+                <div className="p-5 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl">Upload Image</h2>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="size-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-600">Available</span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsUploadPanelOpen(false)}>
+                      <X className="size-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                  <div className="h-full space-y-4">
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer">
+                      <Upload className="size-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-sm mb-1">Click to upload or drag and drop</p>
+                      <p className="text-xs text-gray-500">PNG, JPG or SVG (max. 10MB)</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">Recent Uploads</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 p-2 hover:border-gray-400 transition-colors cursor-pointer">
+                          <div className="size-full bg-gray-200 rounded flex items-center justify-center">
+                            <ImageIcon className="size-8 text-gray-400" />
+                          </div>
+                        </div>
+                        <div className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 p-2 hover:border-gray-400 transition-colors cursor-pointer">
+                          <div className="size-full bg-gray-200 rounded flex items-center justify-center">
+                            <ImageIcon className="size-8 text-gray-400" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add Text Panel - LEFT SIDE */}
+          {isTextPanelOpen && (
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+              <div className="h-full flex flex-col">
+                <div className="p-5 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl">Add Text</h2>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="size-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-600">Available</span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsTextPanelOpen(false)}>
+                      <X className="size-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                  <div className="h-full space-y-4">
+                    <div>
+                      <Label>Text Content</Label>
+                      <Input placeholder="Enter your text here..." className="mt-1" />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-2 block">Font Styles</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Comic Sans MS'].map((font) => (
+                          <button
+                            key={font}
+                            className="p-3 border-2 border-gray-200 rounded-lg hover:border-gray-400 transition-colors text-left text-sm"
+                            style={{ fontFamily: font }}
+                          >
+                            {font}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-2 block">Text Size</Label>
+                      <div className="flex gap-2">
+                        {['Small', 'Medium', 'Large', 'X-Large'].map((size) => (
+                          <button
+                            key={size}
+                            className="flex-1 p-2 border-2 border-gray-200 rounded-lg hover:border-gray-400 transition-colors text-xs"
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-gray-500 mb-2 block">Colors</Label>
+                      <div className="grid grid-cols-6 gap-2">
+                        {['#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#808080', '#800000', '#008000', '#000080'].map((color) => (
+                          <button
+                            key={color}
+                            className="aspect-square rounded-lg border-2 border-gray-300 hover:border-gray-500 transition-colors"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <Button className="w-full bg-gray-800 hover:bg-gray-700">Add Text to Design</Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* My Library Panel - LEFT SIDE */}
+          {isLibraryPanelOpen && (
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+              <div className="h-full flex flex-col">
+                <div className="p-5 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl">My Library</h2>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="size-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-600">Available</span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsLibraryPanelOpen(false)}>
+                      <X className="size-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                  <div className="h-full space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">Saved Designs</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[1, 2, 3, 4].map((item) => (
+                          <div key={item} className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
+                            <div className="size-full flex flex-col items-center justify-center p-4">
+                              <Layers className="size-12 text-gray-400 mb-2" />
+                              <p className="text-xs text-gray-600">Design {item}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">Saved Images</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[1, 2].map((item) => (
+                          <div key={item} className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
+                            <div className="size-full flex items-center justify-center">
+                              <ImageIcon className="size-12 text-gray-400" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Graphics Panel - LEFT SIDE */}
+          {isGraphicsPanelOpen && (
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+              <div className="h-full flex flex-col">
+                <div className="p-5 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl">Graphics</h2>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="size-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-600">Available</span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsGraphicsPanelOpen(false)}>
+                      <X className="size-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                  <div className="h-full space-y-4">
+                    <Input placeholder="Search graphics..." className="w-full" />
+                    
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">Popular Graphics</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[1, 2, 3, 4, 5, 6].map((item) => (
+                          <div key={item} className="aspect-square bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer p-4">
+                            <div className="size-full flex items-center justify-center">
+                              <Circle className="size-16 text-gray-400" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* My Templates Panel - LEFT SIDE */}
+          {isTemplatesPanelOpen && (
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+              <div className="h-full flex flex-col">
+                <div className="p-5 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl">My Templates</h2>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="size-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-600">Available</span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsTemplatesPanelOpen(false)}>
+                      <X className="size-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                  <div className="h-full space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">Saved Templates</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[1, 2, 3, 4, 5, 6].map((item) => (
+                          <div key={item} className="aspect-[4/5] bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
+                            <div className="size-full flex flex-col items-center justify-center p-4">
+                              <FolderOpen className="size-12 text-gray-400 mb-2" />
+                              <p className="text-xs text-gray-600">Template {item}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Patterns/Textures Panel - LEFT SIDE */}
+          {isPatternsPanelOpen && (
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+              <div className="h-full flex flex-col">
+                <div className="p-5 border-b border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl">Patterns & Textures</h2>
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="size-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-600">Available</span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsPatternsPanelOpen(false)}>
+                      <X className="size-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                  <div className="h-full space-y-4">
+                    <Input placeholder="Search patterns..." className="w-full" />
+                    
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">Popular Patterns</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[1, 2, 3, 4, 5, 6].map((item) => (
+                          <div key={item} className="aspect-square bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
+                            <div className="size-full flex items-center justify-center">
+                              <Grid3x3 className="size-16 text-gray-400" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Layers Panel - RIGHT SIDE */}
           {activeTab === 'layers' && (
             <div className="absolute right-0 top-0 bottom-0 bg-white border-l border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
@@ -872,9 +1226,9 @@ export function CustomDesignPage() {
           )}
 
           {/* Canvas Area */}
-          <div className="flex-1 overflow-auto p-8 flex flex-col items-center justify-center bg-[#f5f4f0]">
+          <div className="flex-1 overflow-auto p-8 flex flex-col items-center justify-center bg-gray-50">
             <div className="relative flex items-center justify-center mb-8">
-              <div className="relative w-[500px] h-[600px] flex items-center justify-center">
+              <div className="relative w-[700px] h-[800px] flex items-center justify-center">
                 <img 
                   src={selectedView === 'front' 
                     ? categoryImages[selectedCategory]?.front 
@@ -882,20 +1236,22 @@ export function CustomDesignPage() {
                   }
                   alt={`${selectedCategory} ${selectedView}`}
                   className="w-full h-full object-contain"
-                  style={{ filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))' }}
+                  style={{ 
+                    filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+                  }}
                 />
 
                 <div
-                  className="absolute border-2 border-dashed border-gray-800 rounded pointer-events-none"
+                  className="absolute border-2 border-dashed border-blue-600 rounded pointer-events-none bg-transparent"
                   style={{
-                    width: '260px',
-                    height: '330px',
-                    top: selectedView === 'front' ? '180px' : '150px',
+                    width: '240px',
+                    height: '280px',
+                    top: selectedView === 'front' ? '180px' : '160px',
                     left: '50%',
                     transform: 'translateX(-50%)',
                   }}
                 >
-                  <div className="absolute -top-6 left-0 text-xs text-gray-600">Design Area</div>
+                  <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Design Area</div>
                 </div>
               </div>
             </div>
