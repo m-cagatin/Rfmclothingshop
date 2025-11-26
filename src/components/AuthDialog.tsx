@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -18,6 +19,7 @@ export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const { login, signup } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -32,10 +34,20 @@ export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
     
     setIsLoading(false);
     if (result.success) {
-      toast.success('Welcome back!', {
-        description: 'You have successfully logged in.',
-      });
-      onClose();
+      const { user, isAdmin } = result;
+      
+      if (isAdmin) {
+        toast.success('Welcome Admin!', {
+          description: 'Redirecting to admin panel...',
+        });
+        onClose();
+        navigate('/admin/payment-verification');
+      } else {
+        toast.success('Welcome back!', {
+          description: 'You have successfully logged in.',
+        });
+        onClose();
+      }
     } else {
       setError(result.error || 'Login failed');
     }
@@ -67,6 +79,7 @@ export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
         description: 'Welcome to RFM. Start shopping now!',
       });
       onClose();
+      navigate('/dashboard');
     } else {
       setError(result.error || 'Signup failed');
     }
@@ -121,7 +134,10 @@ export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
               </div>
 
               <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">Demo: test@rfm.com / password123</p>
+                <p className="text-xs text-gray-500">Demo Customer: test@rfm.com / password123</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">Demo Admin: admin@rfm.com / admin123</p>
               </div>
 
               <Button 

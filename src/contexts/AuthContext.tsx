@@ -4,12 +4,14 @@ interface User {
   id: string;
   name: string;
   email: string;
+  role?: 'customer' | 'admin';
 }
 
 interface AuthContextType {
   isLoggedIn: boolean;
   user: User | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  isAdmin: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User; isAdmin?: boolean }>;
   signup: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   requireAuth: (action: () => void) => void;
@@ -28,7 +30,16 @@ const DUMMY_ACCOUNT = {
   email: 'test@rfm.com',
   password: 'password123',
   name: 'Test User',
-  id: '1'
+  id: '1',
+  role: 'customer' as const
+};
+
+const ADMIN_ACCOUNT = {
+  email: 'admin@rfm.com',
+  password: 'admin123',
+  name: 'Admin User',
+  id: 'admin1',
+  role: 'admin' as const
 };
 
 export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) {
@@ -36,7 +47,7 @@ export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) 
   const [user, setUser] = useState<User | null>(null);
 
   // Simulated login function - Replace with actual API call later
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User; isAdmin?: boolean }> => {
     return new Promise((resolve) => {
       // Simulate API delay
       setTimeout(() => {
@@ -47,11 +58,22 @@ export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) 
           const userData = {
             id: DUMMY_ACCOUNT.id,
             name: DUMMY_ACCOUNT.name,
-            email: DUMMY_ACCOUNT.email
+            email: DUMMY_ACCOUNT.email,
+            role: DUMMY_ACCOUNT.role
           };
           setUser(userData);
           setIsLoggedIn(true);
-          resolve({ success: true });
+          resolve({ success: true, user: userData, isAdmin: false });
+        } else if (email === ADMIN_ACCOUNT.email && password === ADMIN_ACCOUNT.password) {
+          const userData = {
+            id: ADMIN_ACCOUNT.id,
+            name: ADMIN_ACCOUNT.name,
+            email: ADMIN_ACCOUNT.email,
+            role: ADMIN_ACCOUNT.role
+          };
+          setUser(userData);
+          setIsLoggedIn(true);
+          resolve({ success: true, user: userData, isAdmin: true });
         } else {
           resolve({ success: false, error: 'Invalid email or password' });
         }
@@ -100,7 +122,7 @@ export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) 
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, user, login, signup, logout, requireAuth, openLoginModal }}>
+    <AuthContext.Provider value={{ isLoggedIn, user, isAdmin: user?.role === 'admin', login, signup, logout, requireAuth, openLoginModal }}>
       {children}
     </AuthContext.Provider>
   );

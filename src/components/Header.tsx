@@ -1,26 +1,20 @@
-import { ShoppingBag, Search, User, Menu, Heart, LogOut } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from './ui/dropdown-menu';
+import { Search, User, Heart, ShoppingBag, Menu, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner@2.0.3';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from './ui/sheet';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
 interface HeaderProps {
@@ -83,6 +77,7 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { requireAuth, isLoggedIn, user, logout } = useAuth();
   const searchRef = useRef<HTMLDivElement>(null);
   
@@ -267,7 +262,7 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
         {/* Actions */}
         <div className="flex items-center gap-2">
           {/* Mobile Search */}
-          <Button variant="ghost" size="icon" className="md:hidden transition-transform active:scale-95">
+          <Button variant="ghost" size="icon" className="md:hidden transition-transform active:scale-95" onClick={() => setMobileSearchOpen(true)}>
             <Search className="size-5" />
           </Button>
 
@@ -289,6 +284,16 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {/* Show Admin Panel link only for admin users */}
+                {user?.email === 'admin@rfm.com' && (
+                  <>
+                    <DropdownMenuItem onClick={() => navigate('/admin/payment-verification')}>
+                      <ShieldCheck className="mr-2 size-4" />
+                      Go to Admin Panel
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={() => {
                   // TODO: Navigate to account page
                   console.log('View account');
@@ -301,12 +306,7 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
                   My Favorites
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => {
-                  logout();
-                  toast.success('Logged out', {
-                    description: 'You have been successfully logged out.',
-                  });
-                }}>
+                <DropdownMenuItem onClick={handleUserClick}>
                   <LogOut className="mr-2 size-4" />
                   Logout
                 </DropdownMenuItem>
@@ -414,38 +414,60 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
         </SheetContent>
       </Sheet>
 
-      {/* Search Dialog */}
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="max-w-2xl">
+      {/* Mobile Search Dialog */}
+      <Dialog open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Search Results</DialogTitle>
+            <DialogTitle>Search Products</DialogTitle>
+            <DialogDescription className="sr-only">
+              Search for products
+            </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4">
-            {filteredProducts.length > 0 ? (
-              filteredProducts.map(product => (
-                <div key={product.id} className="flex items-center gap-4">
-                  <ImageWithFallback
-                    src={product.image}
-                    alt={product.name}
-                    className="size-10 rounded-md"
-                  />
-                  <div className="flex flex-col">
-                    <p className="text-sm font-medium leading-none">{product.name}</p>
-                    <p className="text-xs leading-none text-muted-foreground">{product.category}</p>
-                    <p className="text-sm leading-none text-black/70">₹{product.price}</p>
+          <div className="space-y-4">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
+              <Input 
+                placeholder="Search for products..." 
+                className="w-full pl-10 pr-4 h-10 rounded-full border-gray-200"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+            </div>
+            
+            {/* Search Results */}
+            {searchQuery.trim() && (
+              <div className="space-y-2 max-h-96 overflow-auto">
+                {filteredProducts.length > 0 ? (
+                  filteredProducts.map(product => (
+                    <button
+                      key={product.id}
+                      onClick={() => {
+                        handleProductClick(product.id);
+                        setMobileSearchOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                      <ImageWithFallback
+                        src={product.image}
+                        alt={product.name}
+                        className="size-12 rounded-md object-cover"
+                      />
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-medium">{product.name}</p>
+                        <p className="text-xs text-muted-foreground">{product.category}</p>
+                      </div>
+                      <p className="text-sm font-medium">₱{product.price.toFixed(2)}</p>
+                    </button>
+                  ))
+                ) : (
+                  <div className="p-8 text-center">
+                    <Search className="size-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm text-gray-500">No products found</p>
+                    <p className="text-xs text-gray-400 mt-1">Try a different search term</p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="relative transition-transform active:scale-95"
-                    onClick={() => handleProductClick(product.id)}
-                  >
-                    <ShoppingBag className="size-5" />
-                  </Button>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm leading-none text-gray-500">No products found</p>
+                )}
+              </div>
             )}
           </div>
         </DialogContent>

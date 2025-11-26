@@ -19,6 +19,8 @@
         'input-otp@1.4.2': 'input-otp',
         'figma:asset/9b1c9b84c41dab437d22cd750c934d7c57f770fe.png': path.resolve(__dirname, './src/assets/9b1c9b84c41dab437d22cd750c934d7c57f770fe.png'),
         'figma:asset/9647c27430a9f6c8b8ee3286abecc39ed5ba7881.png': path.resolve(__dirname, './src/assets/9647c27430a9f6c8b8ee3286abecc39ed5ba7881.png'),
+        'figma:asset/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png': path.resolve(__dirname, './src/assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png'),
+        'figma:asset/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png': path.resolve(__dirname, './src/assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png'),
         'figma:asset/597c8fade75e4a66cadca5535632847e5b1e543f.png': path.resolve(__dirname, './src/assets/597c8fade75e4a66cadca5535632847e5b1e543f.png'),
         'figma:asset/45ba39a1343d3a633615a040d568214fe9a61d7f.png': path.resolve(__dirname, './src/assets/45ba39a1343d3a633615a040d568214fe9a61d7f.png'),
         'embla-carousel-react@8.6.0': 'embla-carousel-react',
