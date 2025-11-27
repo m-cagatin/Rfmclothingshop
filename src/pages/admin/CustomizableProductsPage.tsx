@@ -229,8 +229,8 @@ export function CustomizableProductsPage() {
                       <p className="font-bold">{product.sizes.length}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">COLORS</p>
-                      <p className="font-bold">{product.colors.length}</p>
+                      <p className="text-gray-500">COLOR</p>
+                      <p className="font-bold">{product.color?.name || '—'}</p>
                     </div>
                   </div>
 

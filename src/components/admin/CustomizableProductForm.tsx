@@ -13,7 +13,6 @@ import {
 } from '../ui/select';
 import { Checkbox } from '../ui/checkbox';
 import { ImageUploadZone } from './ImageUploadZone';
-import { ColorSelector } from './ColorSelector';
 import { CustomizableProduct } from '../../types/customizableProduct';
 
 interface CustomizableProductFormProps {
@@ -22,12 +21,43 @@ interface CustomizableProductFormProps {
   onCancel: () => void;
 }
 
-const CATEGORIES = ['T-Shirt', 'Polo', 'Caps', 'Hoodie', 'Jacket', 'Pants', 'Shorts'];
+const CATEGORIES = [
+  'T-Shirt - Chinese Collar',
+  'T-Shirt - V-Neck',
+  'T-Shirt - Round Neck',
+  'Jogging Pants',
+  'Polo Shirt',
+  'Sando (Jersey) - V-Neck',
+  'Sando (Jersey) - Round Neck',
+  'Sando (Jersey) - NBA Cut',
+  'Shorts',
+  'Warmers',
+  'Varsity Jacket',
+  'Other',
+];
 const TYPES = ['Unisex', 'Men', 'Women', 'Kids'];
-const FIT_TYPES = ['Classic', 'Slim', 'Oversized', 'Regular'];
-const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
-const PRINT_METHODS = ['DTG (Direct to Garment)', 'Screen Print', 'Embroidery', 'Vinyl Transfer', 'Sublimation'];
-const PRINT_AREAS = ['Front', 'Back', 'Sleeve', 'Chest', 'Pocket'];
+const FIT_TYPES = [
+  'Classic',
+  'Slim Fit',
+  'Regular Fit',
+  'Relaxed Fit',
+  'Oversized',
+  'Tapered',
+  'Athletic Fit',
+  'Muscle Fit',
+];
+const ADULT_TOP_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
+const KIDS_TOP_SIZES = ['K6', 'K7', 'K8', 'K9', 'K10'];
+const ADULT_PANTS_SIZES = ['26', '28', '30', '32', '34', '36', '38', '40', '42'];
+const KIDS_PANTS_SIZES = ['22', '24', '26', '28', '30', '32'];
+const ALL_SIZES = [
+  ...ADULT_TOP_SIZES,
+  ...KIDS_TOP_SIZES,
+  ...ADULT_PANTS_SIZES,
+  ...KIDS_PANTS_SIZES,
+];
+const PRINT_METHODS = ['DTG', 'Screen Print', 'Embroidery'];
+const PRINT_AREAS = ['Front', 'Back', 'Sleeve'];
 
 export function CustomizableProductForm({ product, onSave, onCancel }: CustomizableProductFormProps) {
   const [formData, setFormData] = useState<Omit<CustomizableProduct, 'id' | 'createdAt' | 'updatedAt'>>({
@@ -46,7 +76,9 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
     texture: product?.texture || '',
     baseCost: product?.baseCost || 0,
     retailPrice: product?.retailPrice || 0,
-    colors: product?.colors || [],
+    sizePricing: product?.sizePricing || {},
+    color: product?.color || { name: '', hexCode: '' },
+    variant: product?.variant || { name: '', image: '' },
     printMethod: product?.printMethod || '',
     printAreas: product?.printAreas || [],
     designRequirements: product?.designRequirements || '',
@@ -85,8 +117,6 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
     if (!formData.frontImage) newErrors.frontImage = 'Front image is required';
     if (!formData.backImage) newErrors.backImage = 'Back image is required';
     if (!formData.retailPrice || formData.retailPrice <= 0) newErrors.retailPrice = 'Retail price is required';
-    if (formData.colors.length === 0) newErrors.colors = 'At least one color is required';
-    if (formData.description.length < 20) newErrors.description = 'Description must be at least 20 characters';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -187,23 +217,77 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>
                 Available Sizes <span className="text-red-500">*</span>
               </Label>
-              <div className="flex flex-wrap gap-3">
-                {ALL_SIZES.map((size) => (
-                  <div key={size} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`size-${size}`}
-                      checked={formData.sizes.includes(size)}
-                      onCheckedChange={() => handleSizeToggle(size)}
-                    />
-                    <label htmlFor={`size-${size}`} className="text-sm cursor-pointer">
-                      {size}
-                    </label>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">Adult Tops</p>
+                <div className="flex flex-wrap gap-3">
+                  {ADULT_TOP_SIZES.map((size) => (
+                    <div key={size} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`size-${size}`}
+                        checked={formData.sizes.includes(size)}
+                        onCheckedChange={() => handleSizeToggle(size)}
+                      />
+                      <label htmlFor={`size-${size}`} className="text-sm cursor-pointer">
+                        {size}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">Kids Tops</p>
+                <div className="flex flex-wrap gap-3">
+                  {KIDS_TOP_SIZES.map((size) => (
+                    <div key={size} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`size-${size}`}
+                        checked={formData.sizes.includes(size)}
+                        onCheckedChange={() => handleSizeToggle(size)}
+                      />
+                      <label htmlFor={`size-${size}`} className="text-sm cursor-pointer">
+                        {size}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">Adult Pants</p>
+                <div className="flex flex-wrap gap-3">
+                  {ADULT_PANTS_SIZES.map((size) => (
+                    <div key={size} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`size-${size}`}
+                        checked={formData.sizes.includes(size)}
+                        onCheckedChange={() => handleSizeToggle(size)}
+                      />
+                      <label htmlFor={`size-${size}`} className="text-sm cursor-pointer">
+                        {size}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">Kids Pants</p>
+                <div className="flex flex-wrap gap-3">
+                  {KIDS_PANTS_SIZES.map((size) => (
+                    <div key={size} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`size-${size}`}
+                        checked={formData.sizes.includes(size)}
+                        onCheckedChange={() => handleSizeToggle(size)}
+                      />
+                      <label htmlFor={`size-${size}`} className="text-sm cursor-pointer">
+                        {size}
+                      </label>
+                    </div>
+                  ))}
+                </div>
               </div>
               {errors.sizes && <p className="text-xs text-red-500">{errors.sizes}</p>}
             </div>
@@ -218,18 +302,13 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
             </div>
 
             <div className="space-y-2">
-              <Label>
-                Product Description <span className="text-red-500">*</span>
-              </Label>
+              <Label>Product Description</Label>
               <Textarea
                 placeholder="Detailed description of the product..."
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={4}
-                className={errors.description ? 'border-red-500' : ''}
               />
-              <p className="text-xs text-gray-500">{formData.description.length} / 20 characters minimum</p>
-              {errors.description && <p className="text-xs text-red-500">{errors.description}</p>}
             </div>
           </section>
 
@@ -243,19 +322,62 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                 required
                 value={formData.frontImage}
                 onChange={(value) => setFormData({ ...formData, frontImage: value })}
-                description="Upload front view of the product"
+                description="Upload front view of the product (JPG/PNG/SVG)"
+                maxSizeMB={10}
               />
               <ImageUploadZone
                 label="Back View"
                 required
                 value={formData.backImage}
                 onChange={(value) => setFormData({ ...formData, backImage: value })}
-                description="Upload back view of the product"
+                description="Upload back view of the product (JPG/PNG/SVG)"
+                maxSizeMB={10}
               />
             </div>
             {(errors.frontImage || errors.backImage) && (
               <p className="text-xs text-red-500">Both front and back images are required</p>
             )}
+
+            {/* Additional Images (multiple, optional) */}
+            <div className="space-y-2">
+              <Label>Additional Images (optional)</Label>
+              <p className="text-xs text-gray-500">JPG/PNG/SVG, max 10MB each</p>
+              <div className="space-y-4">
+                {formData.additionalImages.map((img, idx) => (
+                  <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                    <ImageUploadZone
+                      label={`Image ${idx + 1}`}
+                      value={img}
+                      onChange={(value) => {
+                        const next = [...formData.additionalImages];
+                        next[idx] = value;
+                        setFormData({ ...formData, additionalImages: next });
+                      }}
+                      maxSizeMB={10}
+                    />
+                    <div className="flex gap-2 md:justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const next = formData.additionalImages.filter((_, i) => i !== idx);
+                          setFormData({ ...formData, additionalImages: next });
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setFormData({ ...formData, additionalImages: [...formData.additionalImages, ''] })}
+                >
+                  Add another image
+                </Button>
+              </div>
+            </div>
           </section>
 
           {/* 3. Material & Fabric */}
@@ -336,16 +458,132 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                 </p>
               </div>
             )}
+
+            {/* Size Pricing (optional) */}
+            <div className="space-y-3">
+              <Label>Size Pricing (optional)</Label>
+              <div className="space-y-2">
+                {Object.entries(formData.sizePricing || {}).map(([size, extra]) => (
+                  <div key={size} className="grid grid-cols-2 gap-3 items-end">
+                    <div>
+                      <Label className="text-xs">Size</Label>
+                      <Select
+                        value={size}
+                        onValueChange={(value) => {
+                          const updated = { ...(formData.sizePricing || {}) };
+                          const old = updated[size];
+                          delete updated[size];
+                          updated[value] = old;
+                          setFormData({ ...formData, sizePricing: updated });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ALL_SIZES.map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Extra charge (₱)</Label>
+                      <Input
+                        type="number"
+                        value={extra}
+                        onChange={(e) => {
+                          const updated = { ...(formData.sizePricing || {}) };
+                          updated[size] = parseFloat(e.target.value) || 0;
+                          setFormData({ ...formData, sizePricing: updated });
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-2 flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const updated = { ...(formData.sizePricing || {}) };
+                          delete updated[size];
+                          setFormData({ ...formData, sizePricing: updated });
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    // add default row with first size not already used
+                    const used = new Set(Object.keys(formData.sizePricing || {}));
+                    const nextSize = ALL_SIZES.find(s => !used.has(s)) || ALL_SIZES[0];
+                    setFormData({
+                      ...formData,
+                      sizePricing: { ...(formData.sizePricing || {}), [nextSize]: 0 },
+                    });
+                  }}
+                >
+                  Add size pricing
+                </Button>
+              </div>
+            </div>
           </section>
 
           {/* 5. Colors & Variants */}
           <section className="space-y-4">
             <h3 className="font-semibold text-lg border-b pb-2">5. Colors & Variants</h3>
-            <ColorSelector
-              colors={formData.colors}
-              onChange={(colors) => setFormData({ ...formData, colors })}
-            />
-            {errors.colors && <p className="text-xs text-red-500">{errors.colors}</p>}
+            {/* Single Color */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Color (name)</Label>
+                <Input
+                  placeholder="e.g., Black"
+                  value={formData.color?.name || ''}
+                  onChange={(e) => setFormData({ ...formData, color: { ...(formData.color || { hexCode: '' }), name: e.target.value } })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Color (hex)</Label>
+                <div className="flex gap-2">
+                  <input
+                    type="color"
+                    value={formData.color?.hexCode || '#000000'}
+                    onChange={(e) => setFormData({ ...formData, color: { ...(formData.color || { name: '' }), hexCode: e.target.value } })}
+                    className="h-10 w-12 rounded border border-gray-300 cursor-pointer"
+                  />
+                  <Input
+                    placeholder="#000000"
+                    value={formData.color?.hexCode || ''}
+                    onChange={(e) => setFormData({ ...formData, color: { ...(formData.color || { name: '' }), hexCode: e.target.value } })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Single Variant */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Variant Name</Label>
+                <Input
+                  placeholder="e.g., Sample Print"
+                  value={formData.variant?.name || ''}
+                  onChange={(e) => setFormData({ ...formData, variant: { ...(formData.variant || { image: '' }), name: e.target.value } })}
+                />
+              </div>
+              <div>
+                <ImageUploadZone
+                  label="Variant Image (optional)"
+                  value={formData.variant?.image || ''}
+                  onChange={(value) => setFormData({ ...formData, variant: { ...(formData.variant || { name: '' }), image: value } })}
+                  maxSizeMB={10}
+                />
+              </div>
+            </div>
           </section>
 
           {/* 6. Print & Customization */}

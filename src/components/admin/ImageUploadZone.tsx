@@ -8,9 +8,11 @@ interface ImageUploadZoneProps {
   value?: string;
   onChange: (value: string) => void;
   description?: string;
+  /** Max file size in MB (default 10MB) */
+  maxSizeMB?: number;
 }
 
-export function ImageUploadZone({ label, required, value, onChange, description }: ImageUploadZoneProps) {
+export function ImageUploadZone({ label, required, value, onChange, description, maxSizeMB = 10 }: ImageUploadZoneProps) {
   const [preview, setPreview] = useState(value || '');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -22,9 +24,9 @@ export function ImageUploadZone({ label, required, value, onChange, description 
         return;
       }
 
-      // Validate file size (5MB max)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB');
+      // Validate file size
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        alert(`Image size must be less than ${maxSizeMB}MB`);
         return;
       }
 
@@ -75,7 +77,7 @@ export function ImageUploadZone({ label, required, value, onChange, description 
             <p className="mb-2 text-sm text-gray-500">
               <span className="font-semibold">Click to upload</span> or drag and drop
             </p>
-            <p className="text-xs text-gray-400">PNG, JPG, SVG (MAX. 5MB)</p>
+            <p className="text-xs text-gray-400">PNG, JPG, SVG (MAX. {maxSizeMB}MB)</p>
           </div>
           <input
             type="file"

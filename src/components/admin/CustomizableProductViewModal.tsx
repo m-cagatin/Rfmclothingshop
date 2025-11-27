@@ -134,19 +134,42 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
           {/* Colors & Variants */}
           <section>
             <h3 className="font-semibold text-lg border-b pb-2 mb-4">Colors & Variants</h3>
-            <div className="grid grid-cols-3 gap-3">
-              {product.colors.map((color) => (
-                <div key={color.id} className="flex items-center gap-3 p-3 border rounded-lg">
+            <div className="space-y-4">
+              {product.color && (product.color.name || product.color.hexCode) && (
+                <div className="flex items-center gap-3 p-3 border rounded-lg w-fit">
                   <div
                     className="size-12 rounded border flex-shrink-0"
-                    style={{ backgroundColor: color.hexCode }}
+                    style={{ backgroundColor: product.color.hexCode || '#ffffff' }}
                   />
                   <div>
-                    <p className="font-medium">{color.name}</p>
-                    <p className="text-xs text-gray-500">{color.hexCode}</p>
+                    <p className="font-medium">{product.color.name || 'Unnamed color'}</p>
+                    {product.color.hexCode && (
+                      <p className="text-xs text-gray-500">{product.color.hexCode}</p>
+                    )}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {product.variant && (product.variant.name || product.variant.image) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                  <div>
+                    <p className="text-sm text-gray-500 mb-2">Variant Image</p>
+                    {product.variant.image ? (
+                      <img
+                        src={product.variant.image}
+                        alt={product.variant.name || 'Variant'}
+                        className="w-full h-48 object-cover rounded-lg border"
+                      />
+                    ) : (
+                      <p className="text-xs text-gray-500">No variant image</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Variant Name</p>
+                    <p className="font-medium">{product.variant.name || '—'}</p>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

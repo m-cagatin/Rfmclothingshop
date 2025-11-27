@@ -7,7 +7,7 @@ const STORAGE_KEY = 'customizable_products';
 const initialProducts: CustomizableProduct[] = [
   {
     id: '1',
-    category: 'T-Shirt',
+    category: 'T-Shirt - Round Neck',
     name: 'Classic Round Neck Tee',
     type: 'Unisex',
     sizes: ['XS', 'S', 'M', 'L', 'XL', '2XL'],
@@ -22,11 +22,7 @@ const initialProducts: CustomizableProduct[] = [
     texture: 'Soft-washed',
     baseCost: 150,
     retailPrice: 350,
-    colors: [
-      { id: 'c1', name: 'White', hexCode: '#FFFFFF' },
-      { id: 'c2', name: 'Black', hexCode: '#000000' },
-      { id: 'c3', name: 'Navy Blue', hexCode: '#1E3A8A' },
-    ],
+    color: { name: 'White', hexCode: '#FFFFFF' },
     printMethod: 'DTG (Direct to Garment)',
     printAreas: ['Front', 'Back'],
     designRequirements: 'PNG file with transparent background, 300 DPI minimum',
@@ -38,11 +34,11 @@ const initialProducts: CustomizableProduct[] = [
   },
   {
     id: '2',
-    category: 'Polo',
+    category: 'Polo Shirt',
     name: 'Premium Polo Shirt',
     type: 'Men',
     sizes: ['S', 'M', 'L', 'XL', '2XL'],
-    fitType: 'Slim',
+    fitType: 'Slim Fit',
     fitDescription: 'Tailored slim fit for modern look',
     description: 'High-quality polo shirt with collar, perfect for corporate branding and team uniforms.',
     frontImage: 'https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=500',
@@ -53,10 +49,7 @@ const initialProducts: CustomizableProduct[] = [
     texture: 'Pique knit',
     baseCost: 200,
     retailPrice: 450,
-    colors: [
-      { id: 'c4', name: 'Gray', hexCode: '#6B7280' },
-      { id: 'c5', name: 'Red', hexCode: '#DC2626' },
-    ],
+    color: { name: 'Gray', hexCode: '#6B7280' },
     printMethod: 'Embroidery',
     printAreas: ['Chest', 'Back'],
     designRequirements: 'Vector files (AI, EPS) preferred for embroidery',
@@ -77,7 +70,20 @@ export function useCustomizableProducts() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        setProducts(JSON.parse(stored));
+        const parsed = JSON.parse(stored) as any[];
+        // Migrate older schema with colors[] to new single color + optional variant
+        const migrated: CustomizableProduct[] = parsed.map((p: any) => {
+          if (p && Array.isArray(p.colors)) {
+            const first = p.colors[0];
+            const { colors, ...rest } = p;
+            return {
+              ...rest,
+              color: first ? { name: first.name, hexCode: first.hexCode } : undefined,
+            } as CustomizableProduct;
+          }
+          return p as CustomizableProduct;
+        });
+        setProducts(migrated);
       } catch (error) {
         console.error('Failed to parse products:', error);
         setProducts(initialProducts);

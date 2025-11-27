@@ -1,8 +1,11 @@
-export interface ColorVariant {
-  id: string;
+export interface SingleColor {
   name: string;
   hexCode?: string;
-  variantImage?: string;
+}
+
+export interface VariantSample {
+  name: string;
+  image: string;
 }
 
 export interface CustomizableProduct {
@@ -30,9 +33,14 @@ export interface CustomizableProduct {
   // 4. Pricing
   baseCost: number;
   retailPrice: number;
+  /** Optional extra charges per size, e.g., { XL: 50 } */
+  sizePricing?: Record<string, number>;
   
   // 5. Colors & Variants
-  colors: ColorVariant[];
+  /** Single color name/hex */
+  color?: SingleColor;
+  /** Optional single variant sample (image + name) */
+  variant?: VariantSample;
   
   // 6. Print & Customization
   printMethod: string;
