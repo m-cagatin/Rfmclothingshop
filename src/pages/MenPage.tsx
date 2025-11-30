@@ -1,12 +1,15 @@
 import { ProductCard } from '../components/ProductCard';
 import { Button } from '../components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
+import { FavoriteItem } from '../components/FavoritesDrawer';
 
 interface MenPageProps {
   onAddToCart: (productId: string) => void;
+  onToggleFavorite?: (productId: string) => void;
+  favorites?: FavoriteItem[];
 }
 
-export function MenPage({ onAddToCart }: MenPageProps) {
+export function MenPage({ onAddToCart, onToggleFavorite, favorites }: MenPageProps) {
   // Mock product data - men's collection
   const menProducts = [
     {

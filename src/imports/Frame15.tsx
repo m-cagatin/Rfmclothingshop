@@ -1,8 +1,8 @@
 import svgPaths from "./svg-qpd75qeffs";
-import imgRectangle28 from "figma:asset/45ba39a1343d3a633615a040d568214fe9a61d7f.png";
-import imgImage9 from "figma:asset/9647c27430a9f6c8b8ee3286abecc39ed5ba7881.png";
-import imgImage10 from "figma:asset/9b1c9b84c41dab437d22cd750c934d7c57f770fe.png";
-import imgClose from "figma:asset/597c8fade75e4a66cadca5535632847e5b1e543f.png";
+import imgRectangle28 from "../assets/45ba39a1343d3a633615a040d568214fe9a61d7f.png";
+import imgImage9 from "../assets/9647c27430a9f6c8b8ee3286abecc39ed5ba7881.png";
+import imgImage10 from "../assets/9b1c9b84c41dab437d22cd750c934d7c57f770fe.png";
+import imgClose from "../assets/597c8fade75e4a66cadca5535632847e5b1e543f.png";
 
 function Frame() {
   return (

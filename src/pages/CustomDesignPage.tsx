@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -19,7 +19,7 @@ import {
   FolderOpen,
   ZoomIn,
   ZoomOut,
-  Maximize2,
+  RotateCcw,
   ChevronDown,
   ChevronUp,
   Maximize,
@@ -28,8 +28,12 @@ import {
   Check,
   Package
 } from 'lucide-react';
-import whiteTshirtFront from 'figma:asset/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
-import whiteTshirtBack from 'figma:asset/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
+import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
+import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
+import { useFabricCanvas } from '../hooks/useFabricCanvas';
+import { CanvasProvider } from '../contexts/CanvasContext';
+import { useImageUpload } from '../hooks/useImageUpload';
+import { AlertCircle } from 'lucide-react';
 
 type ViewSide = 'front' | 'back';
 
@@ -103,6 +107,33 @@ export function CustomDesignPage() {
   const [productCategory, setProductCategory] = useState('');
   const [selectedView, setSelectedView] = useState<ViewSide>('front');
   const [layers, setLayers] = useState<LayerItem[]>([]);
+  
+  // Image upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { uploadImage, validateImage, isUploading, error: uploadError } = useImageUpload();
+  const [validationWarning, setValidationWarning] = useState<string | null>(null);
+  
+  // Text tool state
+  const [textContent, setTextContent] = useState('');
+  const [selectedFont, setSelectedFont] = useState('Arial');
+  const [selectedTextSize, setSelectedTextSize] = useState<'Small' | 'Medium' | 'Large' | 'X-Large'>('Medium');
+  const [selectedColor, setSelectedColor] = useState('#000000');
+  
+  // Recent uploads state
+  const [recentUploads, setRecentUploads] = useState<Array<{ url: string; width: number; height: number; publicId: string; timestamp: number }>>([]);
+  
+  // Initialize Fabric.js canvas
+  const fabricCanvas = useFabricCanvas('design-canvas', {
+    onObjectAdded: (obj) => {
+      console.log('Object added:', obj);
+    },
+    onObjectRemoved: (obj) => {
+      console.log('Object removed:', obj);
+    },
+    onSelectionCreated: (obj) => {
+      console.log('Object selected:', obj);
+    },
+  });
   
   // Get category and subcategory from navigation state
   const selectedCategory = location.state?.category || 'T-Shirt';
@@ -510,8 +541,93 @@ export function CustomDesignPage() {
     }
   };
 
+  // Handle image upload
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setValidationWarning(null);
+
+    // Validate image
+    const validation = await validateImage(file);
+    
+    if (!validation.valid) {
+      setValidationWarning(validation.error || 'Invalid image');
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    if (validation.warning) {
+      setValidationWarning(validation.warning);
+    }
+
+    // Upload image
+    const result = await uploadImage(file);
+    
+    if (result) {
+      // Add to recent uploads (keep last 6)
+      setRecentUploads(prev => [
+        { ...result, timestamp: Date.now() },
+        ...prev
+      ].slice(0, 6));
+      
+      // Add to canvas
+      fabricCanvas.addImageToCanvas(result.url, { fit: true, center: true });
+      
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+  
+  // Handle clicking on recent upload
+  const handleRecentUploadClick = (imageUrl: string) => {
+    fabricCanvas.addImageToCanvas(imageUrl, { fit: true, center: true });
+  };
+
+  // Handle add text
+  const handleAddText = () => {
+    if (!textContent.trim()) return;
+
+    const sizeMap = {
+      'Small': 24,
+      'Medium': 40,
+      'Large': 60,
+      'X-Large': 80,
+    };
+
+    fabricCanvas.addTextToCanvas(textContent, {
+      fontSize: sizeMap[selectedTextSize],
+      fontFamily: selectedFont,
+      fill: selectedColor,
+    });
+
+    // Clear text input
+    setTextContent('');
+  };
+
   return (
-    <div className="h-screen flex bg-gray-100 overflow-x-hidden">
+    <CanvasProvider value={{
+      fabricCanvas: fabricCanvas.canvasRef,
+      selectedObject: fabricCanvas.selectedObject,
+      canvasObjects: fabricCanvas.canvasObjects,
+      zoom: fabricCanvas.zoom,
+      addImageToCanvas: fabricCanvas.addImageToCanvas,
+      addTextToCanvas: fabricCanvas.addTextToCanvas,
+      removeSelectedObject: fabricCanvas.removeSelectedObject,
+      removeObject: fabricCanvas.removeObject,
+      clearCanvas: fabricCanvas.clearCanvas,
+      getCanvasJSON: fabricCanvas.getCanvasJSON,
+      loadCanvasFromJSON: fabricCanvas.loadCanvasFromJSON,
+      setZoom: fabricCanvas.setZoom,
+      resetView: fabricCanvas.resetView,
+      exportHighDPI: fabricCanvas.exportHighDPI,
+    }}>
+      <div className="h-screen flex bg-gray-100 overflow-x-hidden">
       {/* Left Vertical Toolbar - Spans full height */}
       <div className="bg-white border-r w-20 flex flex-col items-center py-6 gap-4 z-10">
         {leftTools.map((tool) => {
@@ -865,26 +981,99 @@ export function CustomDesignPage() {
 
                 <div className="flex-1 overflow-y-auto p-5 min-h-0">
                   <div className="h-full space-y-4">
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer">
+                    {/* Hidden file input */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                    
+                    {/* Upload area */}
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer"
+                    >
                       <Upload className="size-12 mx-auto mb-4 text-gray-400" />
-                      <p className="text-sm mb-1">Click to upload or drag and drop</p>
+                      <p className="text-sm mb-1 font-medium">Click to upload or drag and drop</p>
                       <p className="text-xs text-gray-500">PNG, JPG or SVG (max. 10MB)</p>
+                      {isUploading && (
+                        <p className="text-xs text-blue-600 mt-2">Uploading...</p>
+                      )}
+                    </div>
+
+                    {/* Validation Error/Warning */}
+                    {validationWarning && (
+                      <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <AlertCircle className="size-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-red-800 mb-1">
+                            Upload Blocked
+                          </p>
+                          <p className="text-xs text-red-700">
+                            {validationWarning}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Error */}
+                    {uploadError && (
+                      <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <AlertCircle className="size-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-red-800 mb-1">
+                            Upload Failed
+                          </p>
+                          <p className="text-xs text-red-700">{uploadError}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Guidelines */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-xs font-medium text-blue-900 mb-2">Best Practices</p>
+                      <ul className="space-y-1.5 text-xs text-blue-800">
+                        <li className="flex items-start gap-2">
+                          <span className="text-blue-600 mt-0.5">•</span>
+                          <span>Use images with at least 2000px on the shortest side</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-blue-600 mt-0.5">•</span>
+                          <span>PNG format with transparent background works best</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-blue-600 mt-0.5">•</span>
+                          <span>High resolution ensures sharp prints (300 DPI recommended)</span>
+                        </li>
+                      </ul>
                     </div>
 
                     <div className="space-y-2">
                       <p className="text-xs text-gray-500">Recent Uploads</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 p-2 hover:border-gray-400 transition-colors cursor-pointer">
-                          <div className="size-full bg-gray-200 rounded flex items-center justify-center">
-                            <ImageIcon className="size-8 text-gray-400" />
-                          </div>
+                      {recentUploads.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400 text-sm">
+                          <ImageIcon className="size-12 mx-auto mb-2 opacity-30" />
+                          <p>No uploads yet</p>
                         </div>
-                        <div className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 p-2 hover:border-gray-400 transition-colors cursor-pointer">
-                          <div className="size-full bg-gray-200 rounded flex items-center justify-center">
-                            <ImageIcon className="size-8 text-gray-400" />
-                          </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {recentUploads.slice(0, 6).map((upload, index) => (
+                            <div 
+                              key={upload.timestamp + index}
+                              onClick={() => handleRecentUploadClick(upload.url)}
+                              className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 p-2 hover:border-blue-500 transition-colors cursor-pointer"
+                            >
+                              <img 
+                                src={upload.url} 
+                                alt="Recent upload" 
+                                className="size-full object-contain rounded"
+                              />
+                            </div>
+                          ))}
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -915,7 +1104,12 @@ export function CustomDesignPage() {
                   <div className="h-full space-y-4">
                     <div>
                       <Label>Text Content</Label>
-                      <Input placeholder="Enter your text here..." className="mt-1" />
+                      <Input 
+                        placeholder="Enter your text here..." 
+                        className="mt-1" 
+                        value={textContent}
+                        onChange={(e) => setTextContent(e.target.value)}
+                      />
                     </div>
 
                     <div>
@@ -924,7 +1118,12 @@ export function CustomDesignPage() {
                         {['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Comic Sans MS'].map((font) => (
                           <button
                             key={font}
-                            className="p-3 border-2 border-gray-200 rounded-lg hover:border-gray-400 transition-colors text-left text-sm"
+                            onClick={() => setSelectedFont(font)}
+                            className={`p-3 border-2 rounded-lg transition-colors text-left text-sm ${
+                              selectedFont === font 
+                                ? 'border-blue-500 bg-blue-50' 
+                                : 'border-gray-200 hover:border-gray-400'
+                            }`}
                             style={{ fontFamily: font }}
                           >
                             {font}
@@ -936,10 +1135,15 @@ export function CustomDesignPage() {
                     <div>
                       <Label className="text-xs text-gray-500 mb-2 block">Text Size</Label>
                       <div className="flex gap-2">
-                        {['Small', 'Medium', 'Large', 'X-Large'].map((size) => (
+                        {(['Small', 'Medium', 'Large', 'X-Large'] as const).map((size) => (
                           <button
                             key={size}
-                            className="flex-1 p-2 border-2 border-gray-200 rounded-lg hover:border-gray-400 transition-colors text-xs"
+                            onClick={() => setSelectedTextSize(size)}
+                            className={`flex-1 p-2 border-2 rounded-lg transition-colors text-xs ${
+                              selectedTextSize === size 
+                                ? 'border-blue-500 bg-blue-50' 
+                                : 'border-gray-200 hover:border-gray-400'
+                            }`}
                           >
                             {size}
                           </button>
@@ -953,14 +1157,24 @@ export function CustomDesignPage() {
                         {['#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#808080', '#800000', '#008000', '#000080'].map((color) => (
                           <button
                             key={color}
-                            className="aspect-square rounded-lg border-2 border-gray-300 hover:border-gray-500 transition-colors"
+                            onClick={() => setSelectedColor(color)}
+                            className={`aspect-square rounded-lg border-2 transition-colors ${
+                              selectedColor === color 
+                                ? 'border-blue-500 ring-2 ring-blue-200' 
+                                : 'border-gray-300 hover:border-gray-500'
+                            }`}
                             style={{ backgroundColor: color }}
                           />
                         ))}
                       </div>
                     </div>
 
-                    <Button className="w-full bg-gray-800 hover:bg-gray-700">Add Text to Design</Button>
+                    <Button 
+                      className="w-full bg-gray-800 hover:bg-gray-700"
+                      onClick={handleAddText}
+                    >
+                      Add Text to Design
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1252,6 +1466,16 @@ export function CustomDesignPage() {
                   }}
                 >
                   <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Design Area</div>
+                  
+                  {/* Fabric.js Canvas - positioned inside design area */}
+                  <canvas 
+                    id="design-canvas" 
+                    className="absolute inset-0 pointer-events-auto"
+                    style={{
+                      width: '240px',
+                      height: '280px',
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -1288,7 +1512,11 @@ export function CustomDesignPage() {
               variant="outline"
               size="icon"
               className="size-8"
-              onClick={() => setZoom(Math.max(50, zoom - 10))}
+              onClick={() => {
+                const newZoom = Math.max(50, zoom - 10);
+                setZoom(newZoom);
+                fabricCanvas.setZoom(newZoom / 100);
+              }}
             >
               <ZoomOut className="size-4" />
             </Button>
@@ -1297,7 +1525,11 @@ export function CustomDesignPage() {
               variant="outline"
               size="icon"
               className="size-8"
-              onClick={() => setZoom(Math.min(200, zoom + 10))}
+              onClick={() => {
+                const newZoom = Math.min(200, zoom + 10);
+                setZoom(newZoom);
+                fabricCanvas.setZoom(newZoom / 100);
+              }}
             >
               <ZoomIn className="size-4" />
             </Button>
@@ -1305,21 +1537,22 @@ export function CustomDesignPage() {
               variant="outline"
               size="icon"
               className="size-8 ml-1"
+              onClick={() => {
+                setZoom(100);
+                fabricCanvas.resetView();
+              }}
             >
-              <Maximize2 className="size-4" />
+              <RotateCcw className="size-4" />
             </Button>
           </div>
-
-          <Button variant="outline" size="sm">
-            Reset view
-          </Button>
 
           <Button size="sm" className="bg-green-600 hover:bg-green-700">
             Save Product
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+    </CanvasProvider>
   );
 }
 

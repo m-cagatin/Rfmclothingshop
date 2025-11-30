@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
-import { Check, X, CreditCard } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { Check, X, CreditCard, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface PaymentVerification {
   id: string;

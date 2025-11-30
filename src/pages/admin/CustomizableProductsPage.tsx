@@ -8,7 +8,7 @@ import { useCustomizableProducts } from '../../hooks/useCustomizableProducts';
 import { CustomizableProductForm } from '../../components/admin/CustomizableProductForm';
 import { CustomizableProductViewModal } from '../../components/admin/CustomizableProductViewModal';
 import { CustomizableProduct, ProductStatus } from '../../types/customizableProduct';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import {
   AlertDialog,
   AlertDialogAction,

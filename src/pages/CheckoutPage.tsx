@@ -8,7 +8,7 @@ import { Separator } from '../components/ui/separator';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { CreditCard, Truck, ShieldCheck, ArrowLeft, Smartphone, Wallet } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { CartItem } from '../components/CartDrawer';
 import { mockPaymentProcess, toCentavos } from '../services/paymongo';
 

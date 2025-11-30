@@ -6,9 +6,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Checkbox } from '../components/ui/checkbox';
 import { Label } from '../components/ui/label';
 import { Slider } from '../components/ui/slider';
+import { FavoriteItem } from '../components/FavoritesDrawer';
 
 interface NewArrivalsPageProps {
   onAddToCart: (productId: string) => void;
+  onToggleFavorite?: (productId: string) => void;
+  favorites?: FavoriteItem[];
 }
 
 interface Product {
@@ -21,7 +24,7 @@ interface Product {
   section?: string;
 }
 
-export function NewArrivalsPage({ onAddToCart }: NewArrivalsPageProps) {
+export function NewArrivalsPage({ onAddToCart, onToggleFavorite, favorites }: NewArrivalsPageProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
@@ -619,7 +622,7 @@ export function NewArrivalsPage({ onAddToCart }: NewArrivalsPageProps) {
                   max={1000}
                   step={50}
                   value={priceRange}
-                  onValueChange={(value) => setPriceRange(value as [number, number])}
+                  onValueChange={(value: number[]) => setPriceRange(value as [number, number])}
                   className="w-full"
                 />
               </div>

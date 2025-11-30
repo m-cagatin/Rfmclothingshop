@@ -13,7 +13,7 @@ import {
 } from './ui/dropdown-menu';
 import { Search, User, Heart, ShoppingBag, Menu, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 

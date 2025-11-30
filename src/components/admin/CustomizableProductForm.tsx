@@ -110,13 +110,13 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) newErrors.name = 'Product name is required';
-    if (!formData.category) newErrors.category = 'Category is required';
-    if (!formData.type) newErrors.type = 'Type is required';
-    if (formData.sizes.length === 0) newErrors.sizes = 'At least one size is required';
-    if (!formData.frontImage) newErrors.frontImage = 'Front image is required';
-    if (!formData.backImage) newErrors.backImage = 'Back image is required';
-    if (!formData.retailPrice || formData.retailPrice <= 0) newErrors.retailPrice = 'Retail price is required';
+    if (!formData['name'].trim()) newErrors['name'] = 'Product name is required';
+    if (!formData['category']) newErrors['category'] = 'Category is required';
+    if (!formData['type']) newErrors['type'] = 'Type is required';
+    if (formData['sizes'].length === 0) newErrors['sizes'] = 'At least one size is required';
+    if (!formData['frontImage']) newErrors['frontImage'] = 'Front image is required';
+    if (!formData['backImage']) newErrors['backImage'] = 'Back image is required';
+    if (!formData['retailPrice'] || formData['retailPrice'] <= 0) newErrors['retailPrice'] = 'Retail price is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -155,8 +155,8 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                 <Label>
                   Category <span className="text-red-500">*</span>
                 </Label>
-                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                  <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
+                <Select value={formData['category']} onValueChange={(value: string) => setFormData({ ...formData, category: value })}>
+                  <SelectTrigger className={errors['category'] ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -165,7 +165,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.category && <p className="text-xs text-red-500">{errors.category}</p>}
+                {errors['category'] && <p className="text-xs text-red-500">{errors['category']}</p>}
               </div>
 
               <div className="space-y-2">
@@ -174,11 +174,11 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                 </Label>
                 <Input
                   placeholder="e.g., Classic Round Neck Tee"
-                  value={formData.name}
+                  value={formData['name']}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={errors.name ? 'border-red-500' : ''}
+                  className={errors['name'] ? 'border-red-500' : ''}
                 />
-                {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
+                {errors['name'] && <p className="text-xs text-red-500">{errors['name']}</p>}
               </div>
             </div>
 
@@ -187,8 +187,8 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                 <Label>
                   Type <span className="text-red-500">*</span>
                 </Label>
-                <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
-                  <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
+                <Select value={formData['type']} onValueChange={(value: string) => setFormData({ ...formData, type: value })}>
+                  <SelectTrigger className={errors['type'] ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -197,14 +197,14 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.type && <p className="text-xs text-red-500">{errors.type}</p>}
+                {errors['type'] && <p className="text-xs text-red-500">{errors['type']}</p>}
               </div>
 
               <div className="space-y-2">
                 <Label>
                   Fit Type <span className="text-red-500">*</span>
                 </Label>
-                <Select value={formData.fitType} onValueChange={(value) => setFormData({ ...formData, fitType: value })}>
+                <Select value={formData.fitType} onValueChange={(value: string) => setFormData({ ...formData, fitType: value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select fit type" />
                   </SelectTrigger>
@@ -289,7 +289,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                   ))}
                 </div>
               </div>
-              {errors.sizes && <p className="text-xs text-red-500">{errors.sizes}</p>}
+              {errors['sizes'] && <p className="text-xs text-red-500">{errors['sizes']}</p>}
             </div>
 
             <div className="space-y-2">
@@ -334,7 +334,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                 maxSizeMB={10}
               />
             </div>
-            {(errors.frontImage || errors.backImage) && (
+            {(errors['frontImage'] || errors['backImage']) && (
               <p className="text-xs text-red-500">Both front and back images are required</p>
             )}
 
@@ -440,13 +440,13 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                   <Input
                     type="number"
                     placeholder="0.00"
-                    value={formData.retailPrice || ''}
+                    value={formData['retailPrice'] || ''}
                     onChange={(e) => setFormData({ ...formData, retailPrice: parseFloat(e.target.value) || 0 })}
-                    className={`pl-8 ${errors.retailPrice ? 'border-red-500' : ''}`}
+                    className={`pl-8 ${errors['retailPrice'] ? 'border-red-500' : ''}`}
                   />
                 </div>
                 <p className="text-xs text-gray-500">Customer price (before print fees)</p>
-                {errors.retailPrice && <p className="text-xs text-red-500">{errors.retailPrice}</p>}
+                {errors['retailPrice'] && <p className="text-xs text-red-500">{errors['retailPrice']}</p>}
               </div>
             </div>
 
@@ -469,7 +469,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                       <Label className="text-xs">Size</Label>
                       <Select
                         value={size}
-                        onValueChange={(value) => {
+                        onValueChange={(value: string) => {
                           const updated = { ...(formData.sizePricing || {}) };
                           const old = updated[size];
                           delete updated[size];
@@ -592,7 +592,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
             
             <div className="space-y-2">
               <Label>Print Method</Label>
-              <Select value={formData.printMethod} onValueChange={(value) => setFormData({ ...formData, printMethod: value })}>
+              <Select value={formData.printMethod} onValueChange={(value: string) => setFormData({ ...formData, printMethod: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select print method" />
                 </SelectTrigger>
@@ -665,7 +665,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
             <Checkbox
               id="status"
               checked={formData.status === 'active'}
-              onCheckedChange={(checked) => setFormData({ ...formData, status: checked ? 'active' : 'inactive' })}
+              onCheckedChange={(checked: boolean) => setFormData({ ...formData, status: checked ? 'active' : 'inactive' })}
             />
             <label htmlFor="status" className="text-sm font-medium cursor-pointer">
               Publish immediately (make visible to customers)
