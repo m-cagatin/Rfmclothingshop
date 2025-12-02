@@ -35,12 +35,20 @@ export interface CustomizableProduct {
   retailPrice: number;
   /** Optional extra charges per size, e.g., { XL: 50 } */
   sizePricing?: Record<string, number>;
+  /** Front print cost in pesos */
+  frontPrintCost?: number;
+  /** Back print cost in pesos */
+  backPrintCost?: number;
   
   // 5. Colors & Variants
+  /** Differentiation type: none, color, or variant */
+  differentiationType?: 'none' | 'color' | 'variant';
   /** Single color name/hex */
   color?: SingleColor;
   /** Optional single variant sample (image + name) */
   variant?: VariantSample;
+  /** Size availability status, e.g., { "M": true, "XL": false } */
+  sizeAvailability?: Record<string, boolean>;
   
   // 6. Print & Customization
   printMethod: string;

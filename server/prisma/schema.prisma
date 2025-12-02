@@ -20,18 +20,18 @@ model RefreshToken {
 }
 
 model User {
-  id            String         @id
-  name          String
-  email         String         @unique
-  phone         String?
-  passwordHash  String?
-  role          User_role      @default(customer)
-  emailVerified Boolean        @default(false)
-  googleId      String?        @unique
+  id             String         @id
+  name           String
+  email          String         @unique
+  phone          String?
+  passwordHash   String?
+  role           User_role      @default(customer)
+  emailVerified  Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @default(now())
+  googleId       String?        @unique
   profilePicture String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @default(now())
-  RefreshToken  RefreshToken[]
+  RefreshToken   RefreshToken[]
 }
 
 model Users {
@@ -163,41 +163,44 @@ model customizable_product_stock {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model customizable_products {
-  id                          Int                                 @id @default(autoincrement())
-  product_code                String?                             @unique(map: "product_code") @db.VarChar(8)
-  name                        String                              @db.VarChar(255)
-  category                    String                              @db.VarChar(100)
-  gender                      customizable_products_gender?       @default(Unisex)
-  fit_type                    customizable_products_fit_type?     @default(Classic)
-  description                 String?                             @db.Text
-  is_active                   Boolean?                            @default(true)
-  fabric_composition          String?                             @db.VarChar(255)
-  fabric_weight               String?                             @db.VarChar(100)
-  texture                     String?                             @db.VarChar(100)
+  id                          Int                                         @id @default(autoincrement())
+  product_code                String?                                     @unique(map: "product_code") @db.VarChar(8)
+  name                        String                                      @db.VarChar(255)
+  category                    String                                      @db.VarChar(100)
+  gender                      customizable_products_gender?               @default(Unisex)
+  fit_type                    customizable_products_fit_type?             @default(Classic)
+  description                 String?                                     @db.Text
+  fabric_composition          String?                                     @db.VarChar(255)
+  fabric_weight               String?                                     @db.VarChar(100)
+  texture                     String?                                     @db.VarChar(100)
   available_sizes             Json?
-  fit_description             String?                             @db.VarChar(255)
+  fit_description             String?                                     @db.VarChar(255)
   size_pricing                Json?
-  color_name                  String?                             @db.VarChar(100)
-  color_hex                   String?                             @db.VarChar(7)
-  variant_name                String?                             @db.VarChar(255)
-  variant_image_url           String?                             @db.VarChar(500)
-  variant_image_public_id     String?                             @db.VarChar(500)
-  print_method                customizable_products_print_method? @default(DTG)
+  color_name                  String?                                     @db.VarChar(100)
+  color_hex                   String?                                     @db.VarChar(7)
+  variant_name                String?                                     @db.VarChar(255)
+  variant_image_url           String?                                     @db.VarChar(500)
+  variant_image_public_id     String?                                     @db.VarChar(500)
+  print_method                customizable_products_print_method?         @default(DTG)
   print_areas                 Json?
-  design_requirements         String?                             @db.Text
-  base_cost                   Decimal?                            @default(0.00) @db.Decimal(10, 2)
-  retail_price                Decimal?                            @default(0.00) @db.Decimal(10, 2)
-  turnaround_time             String?                             @db.VarChar(100)
-  minimum_order_qty           Int?                                @default(1)
-  created_at                  DateTime?                           @default(now()) @db.Timestamp(0)
-  updated_at                  DateTime?                           @default(now()) @db.Timestamp(0)
+  design_requirements         String?                                     @db.Text
+  base_cost                   Decimal?                                    @default(0.00) @db.Decimal(10, 2)
+  retail_price                Decimal?                                    @default(0.00) @db.Decimal(10, 2)
+  turnaround_time             String?                                     @db.VarChar(100)
+  minimum_order_qty           Int?                                        @default(1)
+  created_at                  DateTime?                                   @default(now()) @db.Timestamp(0)
+  updated_at                  DateTime?                                   @default(now()) @db.Timestamp(0)
+  front_print_cost            Decimal?                                    @default(0.00) @db.Decimal(10, 2)
+  back_print_cost             Decimal?                                    @default(0.00) @db.Decimal(10, 2)
+  size_availability           Json?
+  differentiation_type        customizable_products_differentiation_type? @default(none)
+  status                      customizable_products_status?               @default(active)
   customizable_product_images customizable_product_images[]
   customizable_product_stock  customizable_product_stock[]
 
   @@index([category], map: "idx_category")
   @@index([color_name], map: "idx_color_name")
   @@index([gender], map: "idx_gender")
-  @@index([is_active], map: "idx_is_active")
   @@index([variant_name], map: "idx_variant_name")
 }
 
@@ -381,4 +384,16 @@ enum customizable_products_print_method {
   DTG
   Screen_Print @map("Screen Print")
   Embroidery
+}
+
+enum customizable_products_differentiation_type {
+  none
+  color
+  variant
+}
+
+enum customizable_products_status {
+  active
+  inactive
+  archived
 }
