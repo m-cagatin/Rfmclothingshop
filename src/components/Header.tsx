@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from './ui/dropdown-menu';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Search, User, Heart, ShoppingBag, Menu, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -270,10 +271,15 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
           {isLoggedIn ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative transition-transform active:scale-95">
-                  <User className="size-5" />
+                <Button variant="ghost" size="icon" className="relative transition-transform active:scale-95 rounded-full p-0">
+                  <Avatar className="size-9">
+                    <AvatarImage src={user?.profilePicture} alt={user?.name} />
+                    <AvatarFallback className="bg-black text-white text-sm">
+                      {user?.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
                   {/* Online indicator */}
-                  <span className="absolute top-1 right-1 size-2 bg-green-500 rounded-full ring-2 ring-white"></span>
+                  <span className="absolute top-0 right-0 size-2.5 bg-green-500 rounded-full ring-2 ring-white"></span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -285,7 +291,7 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {/* Show Admin Panel link only for admin users */}
-                {user?.email === 'admin@rfm.com' && (
+                {user?.role === 'admin' && (
                   <>
                     <DropdownMenuItem onClick={() => navigate('/admin/payment-verification')}>
                       <ShieldCheck className="mr-2 size-4" />
@@ -294,10 +300,7 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem onClick={() => {
-                  // TODO: Navigate to account page
-                  console.log('View account');
-                }}>
+                <DropdownMenuItem onClick={() => navigate('/account')}>
                   <User className="mr-2 size-4" />
                   My Account
                 </DropdownMenuItem>

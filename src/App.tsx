@@ -4,6 +4,7 @@ import { MenPage } from "./pages/MenPage";
 import { WomenPage } from "./pages/WomenPage";
 import { KidsPage } from "./pages/KidsPage";
 import { UnisexPage } from "./pages/UnisexPage";
+import AccountPage from "./pages/AccountPage";
 import { CustomDesignPage } from "./pages/CustomDesignPage";
 import { CustomProductsPage } from "./pages/CustomProductsPage";
 import { CustomProductDetailsPage } from "./pages/CustomProductDetailsPage";
@@ -19,8 +20,7 @@ import { EmployeesPage } from "./pages/admin/EmployeesPage";
 import { ReportsPage } from "./pages/admin/ReportsPage";
 import { CashFlowPage } from "./pages/admin/CashFlowPage";
 import { useAuth } from "./contexts/AuthContext";
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -38,6 +38,50 @@ import {
 import { AuthDialog } from "./components/AuthDialog";
 import { AuthProvider } from "./contexts/AuthContext";
 import { Toaster } from "./components/ui/sonner";
+
+function ProtectedRoute({
+  children,
+  onRequireAuth,
+}: {
+  children: JSX.Element;
+  onRequireAuth: () => void;
+}) {
+  const { isLoggedIn } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      onRequireAuth();
+    }
+  }, [isLoggedIn, onRequireAuth]);
+
+  if (!isLoggedIn) {
+    return <Navigate to="/" replace state={{ from: location }} />;
+  }
+  return children;
+}
+
+function AdminRoute({
+  children,
+  onRequireAuth,
+}: {
+  children: JSX.Element;
+  onRequireAuth: () => void;
+}) {
+  const { isLoggedIn, user } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      onRequireAuth();
+    }
+  }, [isLoggedIn, onRequireAuth]);
+
+  if (!isLoggedIn || user?.role !== "admin") {
+    return <Navigate to="/" replace state={{ from: location }} />;
+  }
+  return children;
+}
 
 function AppContent() {
   const location = useLocation();
@@ -589,28 +633,60 @@ function AppContent() {
               element={<OrderTrackingPage />}
             />
             <Route
+              path="/account"
+              element={
+                <ProtectedRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <AccountPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/payment-verification"
-              element={<PaymentVerificationPage />}
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <PaymentVerificationPage />
+                </AdminRoute>
+              }
             />
             <Route
               path="/admin/orders"
-              element={<OrdersPage />}
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <OrdersPage />
+                </AdminRoute>
+              }
             />
             <Route
               path="/admin/customizable-products"
-              element={<CustomizableProductsPage />}
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <CustomizableProductsPage />
+                </AdminRoute>
+              }
             />
             <Route
               path="/admin/employees"
-              element={<EmployeesPage />}
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <EmployeesPage />
+                </AdminRoute>
+              }
             />
             <Route
               path="/admin/reports"
-              element={<ReportsPage />}
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <ReportsPage />
+                </AdminRoute>
+              }
             />
             <Route
               path="/admin/cash-flow"
-              element={<CashFlowPage />}
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <CashFlowPage />
+                </AdminRoute>
+              }
             />
             <Route
               path="*"

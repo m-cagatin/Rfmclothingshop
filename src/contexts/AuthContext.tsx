@@ -1,10 +1,14 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 interface User {
   id: string;
   name: string;
   email: string;
   role?: 'customer' | 'admin';
+  phone?: string;
+  profilePicture?: string;
+  googleId?: string;
+  emailVerified?: boolean;
 }
 
 interface AuthContextType {
@@ -12,8 +16,8 @@ interface AuthContextType {
   user: User | null;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User; isAdmin?: boolean }>;
-  signup: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  signup: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  logout: () => Promise<void>;
   requireAuth: (action: () => void) => void;
   openLoginModal: () => void;
 }
@@ -25,88 +29,67 @@ interface AuthProviderProps {
   onOpenLoginModal: () => void;
 }
 
-// Dummy credentials for testing
-const DUMMY_ACCOUNT = {
-  email: 'test@rfm.com',
-  password: 'password123',
-  name: 'Test User',
-  id: '1',
-  role: 'customer' as const
-};
-
-const ADMIN_ACCOUNT = {
-  email: 'admin@rfm.com',
-  password: 'admin123',
-  name: 'Admin User',
-  id: 'admin1',
-  role: 'admin' as const
-};
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // Simulated login function - Replace with actual API call later
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User; isAdmin?: boolean }> => {
-    return new Promise((resolve) => {
-      // Simulate API delay
-      setTimeout(() => {
-        // TODO: Replace with actual backend API call
-        // Example: const response = await fetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-        
-        if (email === DUMMY_ACCOUNT.email && password === DUMMY_ACCOUNT.password) {
-          const userData = {
-            id: DUMMY_ACCOUNT.id,
-            name: DUMMY_ACCOUNT.name,
-            email: DUMMY_ACCOUNT.email,
-            role: DUMMY_ACCOUNT.role
-          };
-          setUser(userData);
-          setIsLoggedIn(true);
-          resolve({ success: true, user: userData, isAdmin: false });
-        } else if (email === ADMIN_ACCOUNT.email && password === ADMIN_ACCOUNT.password) {
-          const userData = {
-            id: ADMIN_ACCOUNT.id,
-            name: ADMIN_ACCOUNT.name,
-            email: ADMIN_ACCOUNT.email,
-            role: ADMIN_ACCOUNT.role
-          };
-          setUser(userData);
-          setIsLoggedIn(true);
-          resolve({ success: true, user: userData, isAdmin: true });
-        } else {
-          resolve({ success: false, error: 'Invalid email or password' });
-        }
-      }, 800);
-    });
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Login failed' };
+      }
+
+      setUser(data.user);
+      setIsLoggedIn(true);
+      return { success: true, user: data.user, isAdmin: data.user?.role === 'admin' };
+    } catch (err) {
+      return { success: false, error: 'Network error' };
+    }
   };
 
-  // Simulated signup function - Replace with actual API call later
-  const signup = async (name: string, email: string, phone: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    return new Promise((resolve) => {
-      // Simulate API delay
-      setTimeout(() => {
-        // TODO: Replace with actual backend API call
-        // Example: const response = await fetch('/api/auth/signup', { method: 'POST', body: JSON.stringify({ name, email, phone, password }) });
-        
-        // For demo purposes, accept any signup
-        const userData = {
-          id: Date.now().toString(),
-          name,
-          email
-        };
-        setUser(userData);
-        setIsLoggedIn(true);
-        resolve({ success: true });
-      }, 800);
-    });
+  const signup = async (name: string, email: string, phone: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, email, phone, password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Signup failed' };
+      }
+
+      setUser(data.user);
+      setIsLoggedIn(true);
+      return { success: true, user: data.user };
+    } catch (err) {
+      return { success: false, error: 'Network error' };
+    }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // ignore network errors on logout
+    }
     setUser(null);
     setIsLoggedIn(false);
-    // TODO: Add backend logout call here if needed
-    // Example: await fetch('/api/auth/logout', { method: 'POST' });
   };
 
   const requireAuth = (action: () => void) => {
@@ -120,6 +103,29 @@ export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) 
   const openLoginModal = () => {
     onOpenLoginModal();
   };
+
+  useEffect(() => {
+    const hydrate = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user) {
+            setUser(data.user);
+            setIsLoggedIn(true);
+          }
+        }
+      } catch {
+        // ignore hydration errors
+      } finally {
+        // hydration complete
+      }
+    };
+    hydrate();
+  }, []);
 
   return (
     <AuthContext.Provider value={{ isLoggedIn, user, isAdmin: user?.role === 'admin', login, signup, logout, requireAuth, openLoginModal }}>

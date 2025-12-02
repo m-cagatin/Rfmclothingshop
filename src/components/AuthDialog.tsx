@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
@@ -8,7 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, XCircle } from 'lucide-react';
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
 
 interface AuthDialogProps {
   isOpen: boolean;
@@ -18,8 +24,23 @@ interface AuthDialogProps {
 export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
   const { login, signup } = useAuth();
   const navigate = useNavigate();
+  const API_BASE = import.meta.env.VITE_API_BASE || '';
+
+  // Check if Google script is loaded
+  useEffect(() => {
+    const checkGoogleLoaded = () => {
+      if (window.google?.accounts?.id) {
+        setGoogleScriptLoaded(true);
+      } else {
+        setTimeout(checkGoogleLoaded, 100);
+      }
+    };
+    checkGoogleLoaded();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -79,15 +100,114 @@ export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
         description: 'Welcome to RFM. Start shopping now!',
       });
       onClose();
-      navigate('/dashboard');
+      navigate('/');
     } else {
       setError(result.error || 'Signup failed');
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!googleScriptLoaded || !window.google) {
+      toast.error('Google Sign-In not ready. Please wait a moment and try again.');
+      return;
+    }
+
+    setGoogleLoading(true);
+    setError('');
+
+    try {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
+        scope: 'email profile',
+        callback: async (tokenResponse: any) => {
+          try {
+            console.log('[Google] Got token response');
+            
+            // Get user info from Google
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: {
+                Authorization: `Bearer ${tokenResponse.access_token}`,
+              },
+            });
+            
+            const userInfo = await userInfoResponse.json();
+            console.log('[Google] User info:', userInfo);
+            
+            // Create a temporary ID token for backend (using email as identifier)
+            // Note: For production, you should use proper OAuth flow
+            const res = await fetch(`${API_BASE}/auth/google-oauth`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ 
+                email: userInfo.email,
+                name: userInfo.name,
+                picture: userInfo.picture,
+                sub: userInfo.sub,
+              }),
+            });
+
+            const data = await res.json();
+            setGoogleLoading(false);
+
+            if (!res.ok) {
+              console.error('[Google] Backend error:', data);
+              setError(data.error || 'Google sign-in failed');
+              toast.error(data.error || 'Google sign-in failed');
+              return;
+            }
+
+            if (data.success && data.user) {
+              const isAdmin = data.user.role === 'admin';
+              
+              toast.success(`Welcome${isAdmin ? ' Admin' : ''}!`, {
+                description: isAdmin ? 'Redirecting to admin panel...' : 'You have successfully signed in.',
+              });
+              
+              onClose();
+              
+              if (isAdmin) {
+                navigate('/admin/payment-verification');
+              } else {
+                navigate('/');
+              }
+              
+              window.location.reload();
+            }
+          } catch (err) {
+            console.error('[Google] Error:', err);
+            setGoogleLoading(false);
+            setError('Network error during Google sign-in');
+            toast.error('Network error. Please try again.');
+          }
+        },
+      });
+
+      // Request access token - this will show Google account picker
+      client.requestAccessToken();
+      
+    } catch (err) {
+      console.error('[Google] Initialization error:', err);
+      setGoogleLoading(false);
+      setError('Failed to initialize Google Sign-In');
+      toast.error('Failed to initialize Google Sign-In');
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
+        {/* Loading Overlay */}
+        {(isLoading || googleLoading) && (
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-lg">
+            <Loader2 className="size-12 animate-spin text-white mb-4" />
+            <p className="text-white font-medium text-lg">
+              {googleLoading ? 'Signing in with Google...' : 'Logging you in...'}
+            </p>
+            <p className="text-white/80 text-sm mt-2">Please wait</p>
+          </div>
+        )}
+
         <DialogHeader>
           <DialogTitle>Welcome to RFM</DialogTitle>
           <DialogDescription>
@@ -156,14 +276,16 @@ export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" type="button" className="transition-transform active:scale-95">
-                  Google
-                </Button>
-                <Button variant="outline" type="button" className="transition-transform active:scale-95">
-                  Facebook
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                type="button"
+                className="w-full transition-transform active:scale-95"
+                onClick={handleGoogleSignIn}
+                disabled={googleLoading || isLoading}
+              >
+                {googleLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {googleLoading ? 'Signing in with Google...' : 'Google'}
+              </Button>
             </form>
           </TabsContent>
 
@@ -239,6 +361,24 @@ export function AuthDialog({ isOpen, onClose }: AuthDialogProps) {
               >
                 {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
                 {isLoading ? 'Creating account...' : 'Create Account'}
+              </Button>
+
+              <div className="relative">
+                <Separator />
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-xs text-gray-500">
+                  OR CONTINUE WITH
+                </span>
+              </div>
+
+              <Button
+                variant="outline"
+                type="button"
+                className="w-full transition-transform active:scale-95"
+                onClick={handleGoogleSignIn}
+                disabled={googleLoading || isLoading}
+              >
+                {googleLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {googleLoading ? 'Signing up with Google...' : 'Google'}
               </Button>
 
               <p className="text-center text-xs text-gray-500">
