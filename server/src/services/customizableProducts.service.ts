@@ -57,13 +57,19 @@ export interface UpdateProductInput extends Partial<CreateProductInput> {
  * Transform database product to frontend format
  */
 function transformProductToFrontend(dbProduct: any) {
+  // Helper to convert underscore to space for enums
+  const formatEnumValue = (value: string | null | undefined): string => {
+    if (!value) return '';
+    return value.replace(/_/g, ' ');
+  };
+
   return {
     id: dbProduct.id.toString(),
     category: dbProduct.category,
     name: dbProduct.name,
     type: dbProduct.gender || 'Unisex',
     sizes: Array.isArray(dbProduct.available_sizes) ? dbProduct.available_sizes : [],
-    fitType: dbProduct.fit_type || 'Classic',
+    fitType: formatEnumValue(dbProduct.fit_type) || 'Classic',
     fitDescription: dbProduct.fit_description || '',
     description: dbProduct.description || '',
     
@@ -97,7 +103,7 @@ function transformProductToFrontend(dbProduct: any) {
     } : undefined,
     sizeAvailability: typeof dbProduct.size_availability === 'object' ? dbProduct.size_availability : {},
     
-    printMethod: dbProduct.print_method || 'DTG',
+    printMethod: formatEnumValue(dbProduct.print_method) || 'DTG',
     printAreas: Array.isArray(dbProduct.print_areas) ? dbProduct.print_areas : [],
     designRequirements: dbProduct.design_requirements || '',
     turnaroundTime: dbProduct.turnaround_time || '',

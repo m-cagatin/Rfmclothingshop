@@ -4,6 +4,13 @@ import { CustomizableProduct } from '../types/customizableProduct';
 const STORAGE_KEY = 'customizable_products';
 const API_BASE_URL = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
 
+// Helper function to transform frontend enum values to backend format
+function transformEnumValue(value: string | undefined): string | undefined {
+  if (!value) return value;
+  // Replace spaces with underscores for enum compatibility
+  return value.replace(/ /g, '_');
+}
+
 // Mock initial data
 const initialProducts: CustomizableProduct[] = [
   {
@@ -175,7 +182,7 @@ export function useCustomizableProducts() {
         name: product.name,
         category: product.category,
         gender: product.type, // Frontend 'type' → Backend 'gender'
-        fitType: product.fitType,
+        fitType: transformEnumValue(product.fitType), // Transform spaces to underscores
         description: product.description,
         fabricComposition: product.fabricComposition,
         fabricWeight: product.fabricWeight,
@@ -188,7 +195,7 @@ export function useCustomizableProducts() {
         variantName: product.variant?.name,
         variantImageUrl: product.variant?.image,
         variantImagePublicId: product.variant?.publicId,
-        printMethod: product.printMethod,
+        printMethod: transformEnumValue(product.printMethod), // Transform spaces to underscores
         printAreas: product.printAreas,
         designRequirements: product.designRequirements,
         baseCost: product.baseCost,
@@ -236,7 +243,7 @@ export function useCustomizableProducts() {
       if (updates.name !== undefined) backendData.name = updates.name;
       if (updates.category !== undefined) backendData.category = updates.category;
       if (updates.type !== undefined) backendData.gender = updates.type;
-      if (updates.fitType !== undefined) backendData.fitType = updates.fitType;
+      if (updates.fitType !== undefined) backendData.fitType = transformEnumValue(updates.fitType);
       if (updates.description !== undefined) backendData.description = updates.description;
       if (updates.fabricComposition !== undefined) backendData.fabricComposition = updates.fabricComposition;
       if (updates.fabricWeight !== undefined) backendData.fabricWeight = updates.fabricWeight;
@@ -253,7 +260,7 @@ export function useCustomizableProducts() {
         backendData.variantImageUrl = updates.variant.image;
         backendData.variantImagePublicId = updates.variant.publicId;
       }
-      if (updates.printMethod !== undefined) backendData.printMethod = updates.printMethod;
+      if (updates.printMethod !== undefined) backendData.printMethod = transformEnumValue(updates.printMethod);
       if (updates.printAreas !== undefined) backendData.printAreas = updates.printAreas;
       if (updates.designRequirements !== undefined) backendData.designRequirements = updates.designRequirements;
       if (updates.baseCost !== undefined) backendData.baseCost = updates.baseCost;

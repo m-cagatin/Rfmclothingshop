@@ -4,6 +4,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth.routes';
 import customizableProductsRoutes from './routes/customizableProducts.routes';
+import cloudinaryRoutes from './routes/cloudinary.routes';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use(cookieParser());
 // Routes
 app.use('/auth', authRoutes);
 app.use('/api/customizable-products', customizableProductsRoutes);
+app.use('/api/cloudinary', cloudinaryRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });

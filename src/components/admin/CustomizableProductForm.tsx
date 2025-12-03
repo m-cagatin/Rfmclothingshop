@@ -15,11 +15,11 @@ import { Checkbox } from '../ui/checkbox';
 import { Switch } from '../ui/switch';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Badge } from '../ui/badge';
-import { ImageUploadZone } from './ImageUploadZone';
-import { VariantImageUploadZone } from './VariantImageUploadZone';
-import { CustomizableProduct, ProductImage } from '../../types/customizableProduct';
+import { ImageUploadZoneDeferred } from './ImageUploadZoneDeferred';
+import { VariantImageUploadZoneDeferred } from './VariantImageUploadZoneDeferred';
+import { CustomizableProduct, ProductImage, ProductImageFile, VariantSample } from '../../types/customizableProduct';
 import { parseColorInput } from '../../utils/colorUtils';
-import { CloudinaryFolder } from '../../services/cloudinary';
+import { CloudinaryFolder, uploadToCloudinary, deleteImage } from '../../services/cloudinary';
 
 interface CustomizableProductFormProps {
   product?: CustomizableProduct;
@@ -139,6 +139,17 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
   const [additionalImageSlots, setAdditionalImageSlots] = useState<number>(
     product?.images?.filter(img => img.type === 'additional').length || 0
   );
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Hold pending image files (not uploaded yet)
+  const [pendingImages, setPendingImages] = useState<{
+    front?: ProductImageFile;
+    back?: ProductImageFile;
+    additional: ProductImageFile[];
+    variant?: { file: File; preview: string; customPublicId?: string; folder: string };
+  }>({
+    additional: []
+  });
 
   const handleSizeToggle = (size: string) => {
     setFormData((prev) => ({
@@ -166,9 +177,9 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
     if (!formData['type']) newErrors['type'] = 'Type is required';
     if (formData['sizes'].length === 0) newErrors['sizes'] = 'At least one size is required';
     
-    // Check for required images
-    const hasFrontImage = formData['images'].some(img => img.type === 'front');
-    const hasBackImage = formData['images'].some(img => img.type === 'back');
+    // Check for required images (check both pendingImages and formData.images)
+    const hasFrontImage = pendingImages.front || formData['images'].some(img => img.type === 'front');
+    const hasBackImage = pendingImages.back || formData['images'].some(img => img.type === 'back');
     if (!hasFrontImage) newErrors['frontImage'] = 'Front image is required';
     if (!hasBackImage) newErrors['backImage'] = 'Back image is required';
     
@@ -178,12 +189,149 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateForm()) {
-      onSave(formData);
-    } else {
+    
+    // Step 1: Validate all fields
+    if (!validateForm()) {
       alert('Please fill in all required fields correctly');
+      return;
+    }
+
+    // Step 2: Check if images are selected
+    const hasFrontImage = pendingImages.front || formData.images.some(img => img.type === 'front');
+    const hasBackImage = pendingImages.back || formData.images.some(img => img.type === 'back');
+    
+    if (!hasFrontImage || !hasBackImage) {
+      alert('Both front and back images are required');
+      return;
+    }
+
+    // Step 3: Confirm with user
+    const totalImages = (pendingImages.front ? 1 : 0) + (pendingImages.back ? 1 : 0) + pendingImages.additional.length;
+    const confirmMessage = `
+Ready to save "${formData.name}"?
+
+✓ Category: ${formData.category}
+✓ Type: ${formData.type}
+✓ Sizes: ${formData.sizes.join(', ')}
+✓ Images to upload: ${totalImages}
+✓ Price: ₱${formData.retailPrice}
+
+Click OK to upload images and save to database.
+    `.trim();
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    // Step 4: Upload images and save
+    setIsSaving(true);
+    const uploadedImages: ProductImage[] = [...formData.images]; // Keep existing images
+    const uploadedPublicIds: string[] = [];
+
+    try {
+      // Upload front image
+      if (pendingImages.front) {
+        const result = await uploadToCloudinary(
+          pendingImages.front.file,
+          pendingImages.front.folder as any,
+          undefined,
+          pendingImages.front.customPublicId
+        );
+        uploadedImages.push({
+          url: result.url,
+          publicId: result.publicId,
+          type: 'front',
+          displayOrder: 1
+        });
+        uploadedPublicIds.push(result.publicId);
+      }
+
+      // Upload back image
+      if (pendingImages.back) {
+        const result = await uploadToCloudinary(
+          pendingImages.back.file,
+          pendingImages.back.folder as any,
+          undefined,
+          pendingImages.back.customPublicId
+        );
+        uploadedImages.push({
+          url: result.url,
+          publicId: result.publicId,
+          type: 'back',
+          displayOrder: 1
+        });
+        uploadedPublicIds.push(result.publicId);
+      }
+
+      // Upload additional images
+      for (const additionalImg of pendingImages.additional) {
+        const result = await uploadToCloudinary(
+          additionalImg.file,
+          additionalImg.folder as any,
+          undefined,
+          additionalImg.customPublicId
+        );
+        uploadedImages.push({
+          url: result.url,
+          publicId: result.publicId,
+          type: 'additional',
+          displayOrder: additionalImg.displayOrder
+        });
+        uploadedPublicIds.push(result.publicId);
+      }
+
+      // Upload variant image if exists
+      let variantData: VariantSample | undefined = undefined;
+      if (formData.variant?.name && formData.variant.name.trim()) {
+        if (pendingImages.variant) {
+          const result = await uploadToCloudinary(
+            pendingImages.variant.file,
+            pendingImages.variant.folder as any,
+            undefined,
+            pendingImages.variant.customPublicId
+          );
+          variantData = {
+            name: formData.variant.name.trim(),
+            image: result.url,
+            publicId: result.publicId
+          };
+          uploadedPublicIds.push(result.publicId);
+        } else if (formData.variant.image) {
+          // Keep existing variant data if no new image
+          variantData = {
+            name: formData.variant.name.trim(),
+            image: formData.variant.image,
+            publicId: formData.variant.publicId
+          };
+        }
+      }
+
+      // Save product with uploaded images
+      const productData = {
+        ...formData,
+        images: uploadedImages,
+        variant: variantData
+      };
+
+      await onSave(productData);
+      // Success - parent component will handle close
+      
+    } catch (error) {
+      console.error('Save failed:', error);
+      
+      // Rollback: Delete uploaded images
+      for (const publicId of uploadedPublicIds) {
+        try {
+          await deleteImage(publicId);
+        } catch (err) {
+          console.error('Failed to delete image during rollback:', publicId, err);
+        }
+      }
+      
+      alert('Failed to save product. Uploaded images have been cleaned up. Please try again.');
+      setIsSaving(false);
     }
   };
 
@@ -406,17 +554,21 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
           <section className="space-y-4">
             <h3 className="font-semibold text-lg border-b pb-2">2. Product Images</h3>
             
+            {/* Info Alert */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+              <strong className="text-blue-800">ℹ️ Note:</strong>{' '}
+              <span className="text-blue-700">
+                Images upload to Cloudinary immediately when selected. Make sure you want to keep them before clicking "Save Product".
+              </span>
+            </div>
+            
             <div className="grid grid-cols-2 gap-4">
-              <ImageUploadZone
+              <ImageUploadZoneDeferred
                 label="Front View"
                 required
-                value={formData.images.find(img => img.type === 'front')}
+                value={pendingImages.front}
                 onChange={(value) => {
-                  const filtered = formData.images.filter(img => img.type !== 'front');
-                  setFormData({ 
-                    ...formData, 
-                    images: value ? [...filtered, value] : filtered 
-                  });
+                  setPendingImages(prev => ({ ...prev, front: value || undefined }));
                 }}
                 folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_FRONT}
                 imageType="front"
@@ -425,16 +577,12 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                 description="Upload front view of the product (JPG/PNG/SVG)"
                 maxSizeMB={10}
               />
-              <ImageUploadZone
+              <ImageUploadZoneDeferred
                 label="Back View"
                 required
-                value={formData.images.find(img => img.type === 'back')}
+                value={pendingImages.back}
                 onChange={(value) => {
-                  const filtered = formData.images.filter(img => img.type !== 'back');
-                  setFormData({ 
-                    ...formData, 
-                    images: value ? [...filtered, value] : filtered 
-                  });
+                  setPendingImages(prev => ({ ...prev, back: value || undefined }));
                 }}
                 folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_BACK}
                 imageType="back"
@@ -454,26 +602,23 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
               <p className="text-xs text-gray-500">JPG/PNG/SVG, max 10MB each - Max 5 images</p>
               <div className="space-y-4">
                 {Array.from({ length: additionalImageSlots }).map((_, idx) => {
-                  const existingImage = formData.images.find(
-                    img => img.type === 'additional' && img.displayOrder === idx + 1
+                  const existingImage = pendingImages.additional.find(
+                    img => img.displayOrder === idx + 1
                   );
                   
                   return (
                     <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                      <ImageUploadZone
+                      <ImageUploadZoneDeferred
                         label={`Additional Image ${idx + 1}`}
                         value={existingImage}
                         onChange={(value) => {
-                          const otherImages = formData.images.filter(
-                            img => !(img.type === 'additional' && img.displayOrder === idx + 1)
-                          );
-                          
-                          if (value) {
-                            const newImage = { ...value, displayOrder: idx + 1 };
-                            setFormData({ ...formData, images: [...otherImages, newImage] });
-                          } else {
-                            setFormData({ ...formData, images: otherImages });
-                          }
+                          setPendingImages(prev => {
+                            const otherImages = prev.additional.filter(img => img.displayOrder !== idx + 1);
+                            return {
+                              ...prev,
+                              additional: value ? [...otherImages, { ...value, displayOrder: idx + 1 }] : otherImages
+                            };
+                          });
                         }}
                         folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_ADDITIONAL}
                         imageType="additional"
@@ -486,18 +631,13 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                           type="button"
                           variant="outline"
                           onClick={() => {
-                            // Remove this slot and all images with higher display orders
-                            const filtered = formData.images.filter(
-                              img => !(img.type === 'additional' && img.displayOrder === idx + 1)
-                            );
-                            // Renumber remaining additional images
-                            const renumbered = filtered.map(img => {
-                              if (img.type === 'additional' && img.displayOrder > idx + 1) {
-                                return { ...img, displayOrder: img.displayOrder - 1 };
-                              }
-                              return img;
+                            setPendingImages(prev => {
+                              const filtered = prev.additional.filter(img => img.displayOrder !== idx + 1);
+                              const renumbered = filtered.map(img => 
+                                img.displayOrder > idx + 1 ? { ...img, displayOrder: img.displayOrder - 1 } : img
+                              );
+                              return { ...prev, additional: renumbered };
                             });
-                            setFormData({ ...formData, images: renumbered });
                             setAdditionalImageSlots(prev => prev - 1);
                           }}
                         >
@@ -589,37 +729,66 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
               </div>
             </div>
 
-            {/* Print Costs */}
+            {/* Print Areas */}
+            <div className="space-y-3">
+              <Label>Print Areas</Label>
+              <div className="flex gap-6">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="area-Front"
+                    checked={formData.printAreas.includes('Front')}
+                    onCheckedChange={() => handlePrintAreaToggle('Front')}
+                  />
+                  <label htmlFor="area-Front" className="text-sm cursor-pointer">
+                    Front
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="area-Back"
+                    checked={formData.printAreas.includes('Back')}
+                    onCheckedChange={() => handlePrintAreaToggle('Back')}
+                  />
+                  <label htmlFor="area-Back" className="text-sm cursor-pointer">
+                    Back
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Print Costs - Conditionally enabled */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Front Print Cost (₱)</Label>
+                <Label className={!formData.printAreas.includes('Front') ? 'text-gray-400' : ''}>Front Print Cost (₱)</Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₱</span>
+                  <span className={`absolute left-3 top-1/2 -translate-y-1/2 ${!formData.printAreas.includes('Front') ? 'text-gray-300' : 'text-gray-500'}`}>₱</span>
                   <Input
                     type="number"
                     step="0.01"
-                    value={formData.frontPrintCost || 0}
-                    onChange={(e) => setFormData({ ...formData, frontPrintCost: parseFloat(e.target.value) || 0 })}
+                    value={formData.frontPrintCost ?? ''}
+                    onChange={(e) => setFormData({ ...formData, frontPrintCost: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                     placeholder="0.00"
                     className="pl-8"
+                    disabled={!formData.printAreas.includes('Front')}
                   />
                 </div>
-                <p className="text-xs text-gray-500">Cost to add front print customization</p>
+                <p className={`text-xs ${!formData.printAreas.includes('Front') ? 'text-gray-400' : 'text-gray-500'}`}>Cost to add front print customization</p>
               </div>
               <div className="space-y-2">
-                <Label>Back Print Cost (₱)</Label>
+                <Label className={!formData.printAreas.includes('Back') ? 'text-gray-400' : ''}>Back Print Cost (₱)</Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₱</span>
+                  <span className={`absolute left-3 top-1/2 -translate-y-1/2 ${!formData.printAreas.includes('Back') ? 'text-gray-300' : 'text-gray-500'}`}>₱</span>
                   <Input
                     type="number"
                     step="0.01"
-                    value={formData.backPrintCost || 0}
-                    onChange={(e) => setFormData({ ...formData, backPrintCost: parseFloat(e.target.value) || 0 })}
+                    value={formData.backPrintCost ?? ''}
+                    onChange={(e) => setFormData({ ...formData, backPrintCost: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                     placeholder="0.00"
                     className="pl-8"
+                    disabled={!formData.printAreas.includes('Back')}
                   />
                 </div>
-                <p className="text-xs text-gray-500">Cost to add back print customization</p>
+                <p className={`text-xs ${!formData.printAreas.includes('Back') ? 'text-gray-400' : 'text-gray-500'}`}>Cost to add back print customization</p>
               </div>
             </div>
 
@@ -761,29 +930,14 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                     onChange={(e) => setFormData({ ...formData, variant: { ...(formData.variant || { image: '', publicId: '' }), name: e.target.value } })}
                   />
                 </div>
-                <VariantImageUploadZone
+                <VariantImageUploadZoneDeferred
                   label="Variant Preview Image"
-                  value={formData.variant?.image && formData.variant?.publicId ? { url: formData.variant.image, publicId: formData.variant.publicId } : undefined}
+                  value={pendingImages.variant}
                   onChange={(value) => {
-                    if (value) {
-                      setFormData({ 
-                        ...formData, 
-                        variant: { 
-                          ...(formData.variant || { name: '' }), 
-                          image: value.url,
-                          publicId: value.publicId
-                        } 
-                      });
-                    } else {
-                      setFormData({ 
-                        ...formData, 
-                        variant: { 
-                          ...(formData.variant || { name: '' }), 
-                          image: '',
-                          publicId: ''
-                        } 
-                      });
-                    }
+                    setPendingImages(prev => ({
+                      ...prev,
+                      variant: value || undefined
+                    }));
                   }}
                   productCode={productCode}
                   maxSizeMB={10}
@@ -858,7 +1012,13 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                   type="number"
                   min="1"
                   value={formData.minOrderQuantity}
-                  onChange={(e) => setFormData({ ...formData, minOrderQuantity: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => setFormData({ ...formData, minOrderQuantity: parseInt(e.target.value) || 0 })}
+                  onBlur={(e) => {
+                    const value = parseInt(e.target.value) || 0;
+                    if (value < 1) {
+                      setFormData({ ...formData, minOrderQuantity: 1 });
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -878,11 +1038,11 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
             </label>
           </div>
           <div className="flex gap-3">
-            <Button type="button" variant="outline" onClick={onCancel}>
+            <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit}>
-              {product ? 'Update Product' : 'Save Product'}
+            <Button onClick={handleSubmit} disabled={isSaving}>
+              {isSaving ? 'Saving...' : (product ? 'Update Product' : 'Save Product')}
             </Button>
           </div>
         </div>

@@ -99,6 +99,29 @@ export function deleteFromCloudinary(publicId: string): Promise<void> {
 }
 
 /**
+ * Delete image from Cloudinary by public ID
+ * This calls the backend endpoint to securely delete the image
+ */
+export async function deleteImage(publicId: string): Promise<void> {
+  try {
+    const response = await fetch(`http://localhost:4000/api/cloudinary/delete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ publicId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to delete image from Cloudinary');
+    }
+  } catch (error) {
+    console.error('Error deleting image:', error);
+    throw error;
+  }
+}
+
+/**
  * Generate Cloudinary transformation URL
  * @param publicId - Cloudinary public ID
  * @param transformations - Array of transformations

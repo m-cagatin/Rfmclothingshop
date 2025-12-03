@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { ColorVariant } from '../../types/customizableProduct';
+
+interface ColorVariant {
+  id: string;
+  name: string;
+  hexCode: string;
+}
 
 interface ColorSelectorProps {
   colors: ColorVariant[];

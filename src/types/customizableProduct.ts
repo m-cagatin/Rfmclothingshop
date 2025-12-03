@@ -6,6 +6,16 @@ export interface ProductImage {
   displayOrder: number;
 }
 
+// For holding file before upload
+export interface ProductImageFile {
+  file: File;
+  preview: string; // Data URL for preview
+  type: 'front' | 'back' | 'additional';
+  displayOrder: number;
+  folder: string;
+  customPublicId?: string;
+}
+
 export interface SingleColor {
   name: string;
   hexCode?: string;
