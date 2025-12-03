@@ -67,7 +67,7 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
               <div>
                 <p className="text-sm text-gray-500 mb-2">Front View</p>
                 <img
-                  src={product.frontImage}
+                  src={product.images.find(img => img.type === 'front')?.url || product.images[0]?.url || ''}
                   alt="Front view"
                   className="w-full h-64 object-cover rounded-lg border"
                 />
@@ -75,7 +75,7 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
               <div>
                 <p className="text-sm text-gray-500 mb-2">Back View</p>
                 <img
-                  src={product.backImage}
+                  src={product.images.find(img => img.type === 'back')?.url || product.images[1]?.url || ''}
                   alt="Back view"
                   className="w-full h-64 object-cover rounded-lg border"
                 />

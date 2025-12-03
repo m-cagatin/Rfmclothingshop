@@ -3,34 +3,26 @@ import { Upload, X, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Progress } from '../ui/progress';
 import { uploadToCloudinary, CloudinaryFolder } from '../../services/cloudinary';
-import { ProductImage } from '../../types/customizableProduct';
 
-interface ImageUploadZoneProps {
+interface VariantImageUploadZoneProps {
   label: string;
   required?: boolean;
-  value?: ProductImage;
-  onChange: (value: ProductImage | null) => void;
-  folder: CloudinaryFolder;
-  imageType?: 'front' | 'back' | 'additional' | 'variant';
-  displayOrder?: number;
+  value?: { url: string; publicId: string };
+  onChange: (value: { url: string; publicId: string } | null) => void;
   productCode?: string; // Product code for organizing images
   description?: string;
-  /** Max file size in MB (default 10MB) */
   maxSizeMB?: number;
 }
 
-export function ImageUploadZone({ 
+export function VariantImageUploadZone({ 
   label, 
   required, 
   value, 
   onChange, 
-  folder,
-  imageType = 'additional',
-  displayOrder = 1,
   productCode,
   description, 
   maxSizeMB = 10 
-}: ImageUploadZoneProps) {
+}: VariantImageUploadZoneProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -39,16 +31,13 @@ export function ImageUploadZone({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset error
     setError(null);
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setError('Please select an image file');
       return;
     }
 
-    // Validate file size
     if (file.size > maxSizeMB * 1024 * 1024) {
       setError(`Image size must be less than ${maxSizeMB}MB`);
       return;
@@ -61,26 +50,20 @@ export function ImageUploadZone({
       // Generate custom public ID with product code
       const timestamp = Date.now();
       const customPublicId = productCode 
-        ? `${productCode}_${imageType}_${displayOrder}_${timestamp}`
+        ? `${productCode}_variant_${timestamp}`
         : undefined;
 
-      // Upload to Cloudinary
       const result = await uploadToCloudinary(
         file, 
-        folder, 
+        CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_VARIANT, 
         (p) => setProgress(p),
         customPublicId
       );
       
-      // Create ProductImage object
-      const productImage: ProductImage = {
+      onChange({
         url: result.url,
         publicId: result.publicId,
-        type: imageType as 'front' | 'back' | 'additional',
-        displayOrder: displayOrder,
-      };
-
-      onChange(productImage);
+      });
     } catch (err) {
       console.error('Upload failed:', err);
       setError('Upload failed. Please try again.');
@@ -111,7 +94,7 @@ export function ImageUploadZone({
         </div>
       )}
 
-      {value ? (
+      {value?.url ? (
         <div className="relative w-full h-48 border-2 border-gray-200 rounded-lg overflow-hidden group">
           <img src={value.url} alt={label} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -131,13 +114,13 @@ export function ImageUploadZone({
         <>
           <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
             uploading 
-              ? 'border-blue-400 bg-blue-50' 
+              ? 'border-purple-400 bg-purple-50' 
               : 'border-gray-300 hover:border-gray-400 bg-gray-50'
           }`}>
             <div className="flex flex-col items-center justify-center pt-5 pb-6">
               {uploading ? (
                 <>
-                  <Loader2 className="size-10 mb-3 text-blue-500 animate-spin" />
+                  <Loader2 className="size-10 mb-3 text-purple-500 animate-spin" />
                   <p className="mb-2 text-sm text-gray-600 font-semibold">
                     Uploading... {Math.round(progress)}%
                   </p>

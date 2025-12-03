@@ -1,3 +1,11 @@
+export interface ProductImage {
+  id?: number;
+  url: string;
+  publicId: string;
+  type: 'front' | 'back' | 'additional';
+  displayOrder: number;
+}
+
 export interface SingleColor {
   name: string;
   hexCode?: string;
@@ -6,6 +14,7 @@ export interface SingleColor {
 export interface VariantSample {
   name: string;
   image: string;
+  publicId?: string;
 }
 
 export interface CustomizableProduct {
@@ -21,9 +30,7 @@ export interface CustomizableProduct {
   description: string;
   
   // 2. Images
-  frontImage: string;
-  backImage: string;
-  additionalImages: string[];
+  images: ProductImage[];
   
   // 3. Material & Fabric
   fabricComposition: string;

@@ -16,8 +16,10 @@ import { Switch } from '../ui/switch';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Badge } from '../ui/badge';
 import { ImageUploadZone } from './ImageUploadZone';
-import { CustomizableProduct } from '../../types/customizableProduct';
+import { VariantImageUploadZone } from './VariantImageUploadZone';
+import { CustomizableProduct, ProductImage } from '../../types/customizableProduct';
 import { parseColorInput } from '../../utils/colorUtils';
+import { CloudinaryFolder } from '../../services/cloudinary';
 
 interface CustomizableProductFormProps {
   product?: CustomizableProduct;
@@ -78,13 +80,13 @@ const getAvailableSizes = (category: string, type: string): string[] => {
     'Sando (Jersey) - V-Neck',
     'Sando (Jersey) - Round Neck',
     'Sando (Jersey) - NBA Cut',
+    'Varsity Jacket',
   ].includes(category);
   
   const isBottomWear = [
     'Jogging Pants',
     'Shorts',
     'Warmers',
-    'Varsity Jacket'
   ].includes(category);
   
   if (isTopWear) {
@@ -99,6 +101,11 @@ const getAvailableSizes = (category: string, type: string): string[] => {
 };
 
 export function CustomizableProductForm({ product, onSave, onCancel }: CustomizableProductFormProps) {
+  // Generate a temporary product code for new products (for Cloudinary organization)
+  const [productCode] = useState<string>(
+    product?.id ? `CP${String(product.id).padStart(6, '0')}` : `TEMP${Date.now()}`
+  );
+
   const [formData, setFormData] = useState<Omit<CustomizableProduct, 'id' | 'createdAt' | 'updatedAt'>>({
     category: product?.category || '',
     name: product?.name || '',
@@ -107,9 +114,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
     fitType: product?.fitType || '',
     fitDescription: product?.fitDescription || '',
     description: product?.description || '',
-    frontImage: product?.frontImage || '',
-    backImage: product?.backImage || '',
-    additionalImages: product?.additionalImages || [],
+    images: product?.images || [],
     fabricComposition: product?.fabricComposition || '',
     fabricWeight: product?.fabricWeight || '',
     texture: product?.texture || '',
@@ -121,7 +126,7 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
     sizeAvailability: product?.sizeAvailability || {},
     differentiationType: product?.differentiationType || 'none',
     color: product?.color || { name: '', hexCode: '' },
-    variant: product?.variant || { name: '', image: '' },
+    variant: product?.variant || { name: '', image: '', publicId: '' },
     printMethod: product?.printMethod || '',
     printAreas: product?.printAreas || [],
     designRequirements: product?.designRequirements || 'Upload your design in high-resolution format (PNG, AI, or PSD). Ensure design dimensions match the selected print area.',
@@ -131,6 +136,9 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [additionalImageSlots, setAdditionalImageSlots] = useState<number>(
+    product?.images?.filter(img => img.type === 'additional').length || 0
+  );
 
   const handleSizeToggle = (size: string) => {
     setFormData((prev) => ({
@@ -157,8 +165,13 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
     if (!formData['category']) newErrors['category'] = 'Category is required';
     if (!formData['type']) newErrors['type'] = 'Type is required';
     if (formData['sizes'].length === 0) newErrors['sizes'] = 'At least one size is required';
-    if (!formData['frontImage']) newErrors['frontImage'] = 'Front image is required';
-    if (!formData['backImage']) newErrors['backImage'] = 'Back image is required';
+    
+    // Check for required images
+    const hasFrontImage = formData['images'].some(img => img.type === 'front');
+    const hasBackImage = formData['images'].some(img => img.type === 'back');
+    if (!hasFrontImage) newErrors['frontImage'] = 'Front image is required';
+    if (!hasBackImage) newErrors['backImage'] = 'Back image is required';
+    
     if (!formData['retailPrice'] || formData['retailPrice'] <= 0) newErrors['retailPrice'] = 'Retail price is required';
 
     setErrors(newErrors);
@@ -397,16 +410,36 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
               <ImageUploadZone
                 label="Front View"
                 required
-                value={formData.frontImage}
-                onChange={(value) => setFormData({ ...formData, frontImage: value })}
+                value={formData.images.find(img => img.type === 'front')}
+                onChange={(value) => {
+                  const filtered = formData.images.filter(img => img.type !== 'front');
+                  setFormData({ 
+                    ...formData, 
+                    images: value ? [...filtered, value] : filtered 
+                  });
+                }}
+                folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_FRONT}
+                imageType="front"
+                displayOrder={1}
+                productCode={productCode}
                 description="Upload front view of the product (JPG/PNG/SVG)"
                 maxSizeMB={10}
               />
               <ImageUploadZone
                 label="Back View"
                 required
-                value={formData.backImage}
-                onChange={(value) => setFormData({ ...formData, backImage: value })}
+                value={formData.images.find(img => img.type === 'back')}
+                onChange={(value) => {
+                  const filtered = formData.images.filter(img => img.type !== 'back');
+                  setFormData({ 
+                    ...formData, 
+                    images: value ? [...filtered, value] : filtered 
+                  });
+                }}
+                folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_BACK}
+                imageType="back"
+                displayOrder={1}
+                productCode={productCode}
                 description="Upload back view of the product (JPG/PNG/SVG)"
                 maxSizeMB={10}
               />
@@ -418,40 +451,69 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
             {/* Additional Images (multiple, optional) */}
             <div className="space-y-2">
               <Label>Additional Images (optional)</Label>
-              <p className="text-xs text-gray-500">JPG/PNG/SVG, max 10MB each</p>
+              <p className="text-xs text-gray-500">JPG/PNG/SVG, max 10MB each - Max 5 images</p>
               <div className="space-y-4">
-                {formData.additionalImages.map((img, idx) => (
-                  <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                    <ImageUploadZone
-                      label={`Image ${idx + 1}`}
-                      value={img}
-                      onChange={(value) => {
-                        const next = [...formData.additionalImages];
-                        next[idx] = value;
-                        setFormData({ ...formData, additionalImages: next });
-                      }}
-                      maxSizeMB={10}
-                    />
-                    <div className="flex gap-2 md:justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const next = formData.additionalImages.filter((_, i) => i !== idx);
-                          setFormData({ ...formData, additionalImages: next });
+                {Array.from({ length: additionalImageSlots }).map((_, idx) => {
+                  const existingImage = formData.images.find(
+                    img => img.type === 'additional' && img.displayOrder === idx + 1
+                  );
+                  
+                  return (
+                    <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                      <ImageUploadZone
+                        label={`Additional Image ${idx + 1}`}
+                        value={existingImage}
+                        onChange={(value) => {
+                          const otherImages = formData.images.filter(
+                            img => !(img.type === 'additional' && img.displayOrder === idx + 1)
+                          );
+                          
+                          if (value) {
+                            const newImage = { ...value, displayOrder: idx + 1 };
+                            setFormData({ ...formData, images: [...otherImages, newImage] });
+                          } else {
+                            setFormData({ ...formData, images: otherImages });
+                          }
                         }}
-                      >
-                        Remove
-                      </Button>
+                        folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_ADDITIONAL}
+                        imageType="additional"
+                        displayOrder={idx + 1}
+                        productCode={productCode}
+                        maxSizeMB={10}
+                      />
+                      <div className="flex gap-2 md:justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            // Remove this slot and all images with higher display orders
+                            const filtered = formData.images.filter(
+                              img => !(img.type === 'additional' && img.displayOrder === idx + 1)
+                            );
+                            // Renumber remaining additional images
+                            const renumbered = filtered.map(img => {
+                              if (img.type === 'additional' && img.displayOrder > idx + 1) {
+                                return { ...img, displayOrder: img.displayOrder - 1 };
+                              }
+                              return img;
+                            });
+                            setFormData({ ...formData, images: renumbered });
+                            setAdditionalImageSlots(prev => prev - 1);
+                          }}
+                        >
+                          Remove Slot
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setFormData({ ...formData, additionalImages: [...formData.additionalImages, ''] })}
+                  onClick={() => setAdditionalImageSlots(prev => prev + 1)}
+                  disabled={additionalImageSlots >= 5}
                 >
-                  Add another image
+                  + Add Additional Image Slot {additionalImageSlots >= 5 && '(Max reached)'}
                 </Button>
               </div>
             </div>
@@ -696,13 +758,34 @@ export function CustomizableProductForm({ product, onSave, onCancel }: Customiza
                   <Input
                     placeholder="e.g., Skull Design, Floral Pattern, Abstract Art"
                     value={formData.variant?.name || ''}
-                    onChange={(e) => setFormData({ ...formData, variant: { ...(formData.variant || { image: '' }), name: e.target.value } })}
+                    onChange={(e) => setFormData({ ...formData, variant: { ...(formData.variant || { image: '', publicId: '' }), name: e.target.value } })}
                   />
                 </div>
-                <ImageUploadZone
+                <VariantImageUploadZone
                   label="Variant Preview Image"
-                  value={formData.variant?.image || ''}
-                  onChange={(value) => setFormData({ ...formData, variant: { ...(formData.variant || { name: '' }), image: value } })}
+                  value={formData.variant?.image && formData.variant?.publicId ? { url: formData.variant.image, publicId: formData.variant.publicId } : undefined}
+                  onChange={(value) => {
+                    if (value) {
+                      setFormData({ 
+                        ...formData, 
+                        variant: { 
+                          ...(formData.variant || { name: '' }), 
+                          image: value.url,
+                          publicId: value.publicId
+                        } 
+                      });
+                    } else {
+                      setFormData({ 
+                        ...formData, 
+                        variant: { 
+                          ...(formData.variant || { name: '' }), 
+                          image: '',
+                          publicId: ''
+                        } 
+                      });
+                    }
+                  }}
+                  productCode={productCode}
                   maxSizeMB={10}
                 />
               </div>

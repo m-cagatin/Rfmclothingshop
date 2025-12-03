@@ -6,44 +6,41 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const helmet_1 = __importDefault(require("helmet"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
-const prisma_1 = require("./prisma");
+const customizableProducts_routes_1 = __importDefault(require("./routes/customizableProducts.routes"));
 const app = (0, express_1.default)();
-app.use((0, helmet_1.default)({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
-}));
-// Compute allowed origins from env (comma-separated)
-const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
+// Simple CORS - allow frontend origins
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000')
     .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+    .map((o) => o.trim());
 app.use((0, cors_1.default)({
-    origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, Google auth iframe) and explicit allowlist
-        if (!origin || allowedOrigins.includes(origin) || origin?.includes('google.com')) {
-            return callback(null, true);
-        }
-        return callback(new Error('Not allowed by CORS'));
-    },
+    origin: allowedOrigins,
     credentials: true,
-    optionsSuccessStatus: 200,
-    exposedHeaders: ['Set-Cookie'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 }));
 app.use(express_1.default.json());
 app.use((0, cookie_parser_1.default)());
+// Routes
 app.use('/auth', auth_routes_1.default);
+app.use('/api/customizable-products', customizableProducts_routes_1.default);
 app.get('/health', (_req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, timestamp: new Date().toISOString() });
 });
-app.get('/debug/users', async (_req, res) => {
-    const users = await prisma_1.prisma.user.findMany({ select: { id: true, email: true, role: true, passwordHash: true } });
-    res.json({ users, count: users.length });
-});
+// Start server
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
-    console.log(`Auth server running on port ${port}`);
+    console.log(`✅ Auth server running on http://localhost:${port}`);
+    console.log(`📝 Allowed origins: ${allowedOrigins.join(', ')}`);
+}).on('error', (error) => {
+    console.error('❌ Server error:', error);
+    process.exit(1);
+});
+// Global error handlers
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
 });

@@ -12,6 +12,10 @@ export enum CloudinaryFolder {
   ADMIN_PATTERNS = 'admin_patterns',
   ADMIN_TEMPLATES = 'admin_templates',
   ADMIN_SHAPES = 'admin_shapes',
+  CUSTOMIZABLE_PRODUCTS_FRONT = 'Customizable Products/Front View IMG',
+  CUSTOMIZABLE_PRODUCTS_BACK = 'Customizable Products/Back View IMG',
+  CUSTOMIZABLE_PRODUCTS_ADDITIONAL = 'Customizable Products/Additional IMG',
+  CUSTOMIZABLE_PRODUCTS_VARIANT = 'Customizable Products/Variant IMG',
 }
 
 interface UploadResult {
@@ -28,16 +32,23 @@ interface UploadResult {
  * @param file - File to upload
  * @param folder - Target folder (defaults to user_uploads)
  * @param onProgress - Optional progress callback
+ * @param customPublicId - Optional custom public ID for the image (includes product code and type)
  */
 export async function uploadToCloudinary(
   file: File,
   folder: CloudinaryFolder = CloudinaryFolder.USER_UPLOADS,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  customPublicId?: string
 ): Promise<UploadResult> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
   formData.append('folder', `rfm_images/${folder}`);
+  
+  // If custom public ID is provided, use it (for product images with product code)
+  if (customPublicId) {
+    formData.append('public_id', customPublicId);
+  }
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();

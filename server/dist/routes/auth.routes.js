@@ -39,6 +39,7 @@ const router = (0, express_1.Router)();
 router.post('/signup', Auth.signup);
 router.post('/login', Auth.login);
 router.post('/google', Auth.google);
+router.post('/google-oauth', Auth.googleOAuth);
 router.get('/me', Auth.me);
 router.post('/logout', Auth.logout);
 router.post('/refresh', Auth.refresh);
