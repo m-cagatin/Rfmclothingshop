@@ -54,6 +54,62 @@ export interface UpdateProductInput extends Partial<CreateProductInput> {
 }
 
 /**
+ * Transform database product to frontend format
+ */
+function transformProductToFrontend(dbProduct: any) {
+  return {
+    id: dbProduct.id.toString(),
+    category: dbProduct.category,
+    name: dbProduct.name,
+    type: dbProduct.gender || 'Unisex',
+    sizes: Array.isArray(dbProduct.available_sizes) ? dbProduct.available_sizes : [],
+    fitType: dbProduct.fit_type || 'Classic',
+    fitDescription: dbProduct.fit_description || '',
+    description: dbProduct.description || '',
+    
+    // Transform images array
+    images: (dbProduct.customizable_product_images || []).map((img: any) => ({
+      id: img.image_id,
+      url: img.image_url,
+      publicId: img.cloudinary_public_id || '',
+      type: img.image_type,
+      displayOrder: img.display_order
+    })),
+    
+    fabricComposition: dbProduct.fabric_composition || '',
+    fabricWeight: dbProduct.fabric_weight || '',
+    texture: dbProduct.texture || '',
+    baseCost: Number(dbProduct.base_cost) || 0,
+    retailPrice: Number(dbProduct.retail_price) || 0,
+    sizePricing: typeof dbProduct.size_pricing === 'object' ? dbProduct.size_pricing : {},
+    frontPrintCost: Number(dbProduct.front_print_cost) || 0,
+    backPrintCost: Number(dbProduct.back_print_cost) || 0,
+    
+    differentiationType: dbProduct.differentiation_type || 'none',
+    color: dbProduct.color_name ? {
+      name: dbProduct.color_name,
+      hexCode: dbProduct.color_hex
+    } : undefined,
+    variant: dbProduct.variant_name ? {
+      name: dbProduct.variant_name,
+      image: dbProduct.variant_image_url || '',
+      publicId: dbProduct.variant_image_public_id
+    } : undefined,
+    sizeAvailability: typeof dbProduct.size_availability === 'object' ? dbProduct.size_availability : {},
+    
+    printMethod: dbProduct.print_method || 'DTG',
+    printAreas: Array.isArray(dbProduct.print_areas) ? dbProduct.print_areas : [],
+    designRequirements: dbProduct.design_requirements || '',
+    turnaroundTime: dbProduct.turnaround_time || '',
+    minOrderQuantity: dbProduct.minimum_order_qty || 1,
+    
+    status: dbProduct.status || 'active',
+    createdAt: dbProduct.created_at?.toISOString() || new Date().toISOString(),
+    updatedAt: dbProduct.updated_at?.toISOString() || new Date().toISOString(),
+  };
+}
+
+/**
  * Get all customizable products with their images
  */
 export async function getAllProducts() {
@@ -71,7 +127,7 @@ export async function getAllProducts() {
     }
   });
 
-  return products;
+  return products.map(transformProductToFrontend);
 }
 
 /**
@@ -90,7 +146,7 @@ export async function getProductById(id: number) {
     }
   });
 
-  return product;
+  return product ? transformProductToFrontend(product) : null;
 }
 
 /**
@@ -147,7 +203,7 @@ export async function createProduct(data: CreateProductInput) {
     }
   });
 
-  return product;
+  return transformProductToFrontend(product);
 }
 
 /**
@@ -234,7 +290,7 @@ export async function updateProduct(data: UpdateProductInput) {
     }
   });
 
-  return product;
+  return transformProductToFrontend(product);
 }
 
 /**

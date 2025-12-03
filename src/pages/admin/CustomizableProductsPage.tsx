@@ -204,7 +204,7 @@ export function CustomizableProductsPage() {
                 )}
                 <div className="bg-gray-100 aspect-square flex items-center justify-center overflow-hidden">
                   <ImageWithFallback
-                    src={product.frontImage}
+                    src={product.images?.find(img => img.type === 'front')?.url || product.images?.[0]?.url || ''}
                     alt={product.name}
                     className="w-full h-full object-cover"
                   />

@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { CustomizableProduct } from '../../types/customizableProduct';
 import { Badge } from '../ui/badge';
+import { useState } from 'react';
 
 interface CustomizableProductViewModalProps {
   product: CustomizableProduct;
@@ -9,9 +10,12 @@ interface CustomizableProductViewModalProps {
 }
 
 export function CustomizableProductViewModal({ product, onClose }: CustomizableProductViewModalProps) {
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto p-4">
-      <div className="bg-white rounded-lg w-full max-w-4xl my-8">
+    <>
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto p-4">
+        <div className="bg-white rounded-lg w-full max-w-4xl my-8">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div className="flex items-center gap-3">
@@ -66,21 +70,53 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-gray-500 mb-2">Front View</p>
-                <img
-                  src={product.images.find(img => img.type === 'front')?.url || product.images[0]?.url || ''}
-                  alt="Front view"
-                  className="w-full h-64 object-cover rounded-lg border"
-                />
+                <div 
+                  className="relative w-full aspect-[3/4] border rounded-lg overflow-hidden cursor-pointer group"
+                  onClick={() => setLightboxImage(product.images?.find(img => img.type === 'front')?.url || product.images?.[0]?.url || '')}
+                >
+                  <img
+                    src={product.images?.find(img => img.type === 'front')?.url || product.images?.[0]?.url || ''}
+                    alt="Front view"
+                    className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                  />
+                </div>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-2">Back View</p>
-                <img
-                  src={product.images.find(img => img.type === 'back')?.url || product.images[1]?.url || ''}
-                  alt="Back view"
-                  className="w-full h-64 object-cover rounded-lg border"
-                />
+                <div 
+                  className="relative w-full aspect-[3/4] border rounded-lg overflow-hidden cursor-pointer group"
+                  onClick={() => setLightboxImage(product.images?.find(img => img.type === 'back')?.url || product.images?.[1]?.url || '')}
+                >
+                  <img
+                    src={product.images?.find(img => img.type === 'back')?.url || product.images?.[1]?.url || ''}
+                    alt="Back view"
+                    className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                  />
+                </div>
               </div>
             </div>
+            
+            {/* Additional Images */}
+            {product.images?.filter(img => img.type === 'additional').length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-gray-500 mb-2">Additional Images</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {product.images.filter(img => img.type === 'additional').map((img, idx) => (
+                    <div
+                      key={img.id || idx}
+                      className="relative w-full aspect-[3/4] border rounded-lg overflow-hidden cursor-pointer group"
+                      onClick={() => setLightboxImage(img.url)}
+                    >
+                      <img
+                        src={img.url}
+                        alt={`Additional ${idx + 1}`}
+                        className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Material & Fabric */}
@@ -123,6 +159,39 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
                 <p className="text-2xl font-semibold text-green-600">₱{product.retailPrice.toFixed(2)}</p>
               </div>
             </div>
+            
+            {/* Print Costs */}
+            {(product.frontPrintCost || product.backPrintCost) && (
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                {product.frontPrintCost && product.frontPrintCost > 0 && (
+                  <div>
+                    <p className="text-sm text-gray-500">Front Print Cost</p>
+                    <p className="font-semibold">₱{product.frontPrintCost.toFixed(2)}</p>
+                  </div>
+                )}
+                {product.backPrintCost && product.backPrintCost > 0 && (
+                  <div>
+                    <p className="text-sm text-gray-500">Back Print Cost</p>
+                    <p className="font-semibold">₱{product.backPrintCost.toFixed(2)}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Size Pricing */}
+            {product.sizePricing && Object.keys(product.sizePricing).length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-gray-500 mb-2">Additional Charges by Size</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(product.sizePricing).map(([size, price]) => (
+                    <div key={size} className="px-3 py-1 bg-gray-100 rounded border text-sm">
+                      {size}: +₱{Number(price).toFixed(2)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <div className="mt-4 p-4 bg-gray-50 rounded-lg">
               <p className="text-sm">
                 Profit Margin: <span className="font-semibold">₱{(product.retailPrice - product.baseCost).toFixed(2)}</span>
@@ -155,11 +224,16 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
                   <div>
                     <p className="text-sm text-gray-500 mb-2">Variant Image</p>
                     {product.variant.image ? (
-                      <img
-                        src={product.variant.image}
-                        alt={product.variant.name || 'Variant'}
-                        className="w-full h-48 object-cover rounded-lg border"
-                      />
+                      <div 
+                        className="relative w-full aspect-[3/4] border rounded-lg overflow-hidden cursor-pointer group"
+                        onClick={() => setLightboxImage(product.variant?.image || '')}
+                      >
+                        <img
+                          src={product.variant.image}
+                          alt={product.variant.name || 'Variant'}
+                          className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                        />
+                      </div>
                     ) : (
                       <p className="text-xs text-gray-500">No variant image</p>
                     )}
@@ -237,5 +311,27 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
         </div>
       </div>
     </div>
+
+      {/* Lightbox Modal */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white hover:text-gray-300"
+            onClick={() => setLightboxImage(null)}
+          >
+            <X className="size-8" />
+          </button>
+          <img
+            src={lightboxImage}
+            alt="Full size"
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
   );
 }

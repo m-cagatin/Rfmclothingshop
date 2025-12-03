@@ -7,11 +7,11 @@ const CLOUDINARY_CLOUD_NAME = import.meta.env['VITE_CLOUDINARY_CLOUD_NAME'];
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env['VITE_CLOUDINARY_UPLOAD_PRESET'];
 
 export enum CloudinaryFolder {
-  USER_UPLOADS = 'user_uploads',
-  ADMIN_GRAPHICS = 'admin_graphics',
-  ADMIN_PATTERNS = 'admin_patterns',
-  ADMIN_TEMPLATES = 'admin_templates',
-  ADMIN_SHAPES = 'admin_shapes',
+  USER_UPLOADS = 'rfm_images/user_uploads',
+  ADMIN_GRAPHICS = 'rfm_images/admin_graphics',
+  ADMIN_PATTERNS = 'rfm_images/admin_patterns',
+  ADMIN_TEMPLATES = 'rfm_images/admin_templates',
+  ADMIN_SHAPES = 'rfm_images/admin_shapes',
   CUSTOMIZABLE_PRODUCTS_FRONT = 'Customizable Products/Front View IMG',
   CUSTOMIZABLE_PRODUCTS_BACK = 'Customizable Products/Back View IMG',
   CUSTOMIZABLE_PRODUCTS_ADDITIONAL = 'Customizable Products/Additional IMG',
@@ -43,7 +43,7 @@ export async function uploadToCloudinary(
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder', `rfm_images/${folder}`);
+  formData.append('folder', folder);
   
   // If custom public ID is provided, use it (for product images with product code)
   if (customPublicId) {
