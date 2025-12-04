@@ -16,6 +16,7 @@ import { OrderTrackingPage } from "./pages/OrderTrackingPage";
 import { PaymentVerificationPage } from "./pages/admin/PaymentVerificationPage";
 import { OrdersPage } from "./pages/admin/OrdersPage";
 import { CustomizableProductsPage } from "./pages/admin/CustomizableProductsPage";
+import { CanvasResourcesPage } from "./pages/admin/CanvasResourcesPage";
 import { EmployeesPage } from "./pages/admin/EmployeesPage";
 import { ReportsPage } from "./pages/admin/ReportsPage";
 import { CashFlowPage } from "./pages/admin/CashFlowPage";
@@ -661,6 +662,14 @@ function AppContent() {
               element={
                 <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
                   <CustomizableProductsPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/canvas-resources"
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <CanvasResourcesPage />
                 </AdminRoute>
               }
             />

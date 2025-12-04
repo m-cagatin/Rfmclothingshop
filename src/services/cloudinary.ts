@@ -25,6 +25,7 @@ interface UploadResult {
   height: number;
   format: string;
   size: number;
+  thumbnailUrl?: string;
 }
 
 /**
@@ -44,6 +45,15 @@ export async function uploadToCloudinary(
   formData.append('file', file);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
   formData.append('folder', folder);
+  
+  // Quality preservation
+  formData.append('quality', 'auto:best');
+  formData.append('fetch_format', 'auto');
+  
+  // Preserve transparency for PNG
+  if (file.type === 'image/png') {
+    formData.append('flags', 'preserve_transparency');
+  }
   
   // If custom public ID is provided, use it (for product images with product code)
   if (customPublicId) {
@@ -66,6 +76,13 @@ export async function uploadToCloudinary(
     xhr.addEventListener('load', () => {
       if (xhr.status === 200) {
         const data = JSON.parse(xhr.responseText);
+        
+        // Generate thumbnail URL
+        const thumbnailUrl = data.secure_url.replace(
+          '/upload/',
+          '/upload/w_300,h_300,c_fill,q_auto/'
+        );
+        
         resolve({
           url: data.secure_url,
           publicId: data.public_id,
@@ -73,6 +90,7 @@ export async function uploadToCloudinary(
           height: data.height,
           format: data.format,
           size: data.bytes,
+          thumbnailUrl,
         });
       } else {
         reject(new Error('Upload failed'));

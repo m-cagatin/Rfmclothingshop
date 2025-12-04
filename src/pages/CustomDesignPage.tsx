@@ -33,6 +33,7 @@ import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { CanvasProvider } from '../contexts/CanvasContext';
 import { useImageUpload } from '../hooks/useImageUpload';
+import { useCanvasResources } from '../hooks/useCanvasResources';
 import { AlertCircle } from 'lucide-react';
 
 type ViewSide = 'front' | 'back';
@@ -98,7 +99,6 @@ export function CustomDesignPage() {
   const [isTextPanelOpen, setIsTextPanelOpen] = useState(false);
   const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
   const [isGraphicsPanelOpen, setIsGraphicsPanelOpen] = useState(false);
-  const [isTemplatesPanelOpen, setIsTemplatesPanelOpen] = useState(false);
   const [isPatternsPanelOpen, setIsPatternsPanelOpen] = useState(false);
   const [isProductionCostOpen, setIsProductionCostOpen] = useState(true);
   const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
@@ -121,6 +121,10 @@ export function CustomDesignPage() {
   
   // Recent uploads state
   const [recentUploads, setRecentUploads] = useState<Array<{ url: string; width: number; height: number; publicId: string; timestamp: number }>>([]);
+  
+  // Canvas resources hook
+  const { graphics, patterns, fetchGraphics } = useCanvasResources();
+  const [selectedGraphicCategory, setSelectedGraphicCategory] = useState<'all' | 'icon' | 'logo' | 'illustration' | 'template'>('all');
   
   // Initialize Fabric.js canvas
   const fabricCanvas = useFabricCanvas('design-canvas', {
@@ -481,7 +485,6 @@ export function CustomDesignPage() {
     { id: 'text', icon: Type, label: 'Add Text' },
     { id: 'library', icon: Layers, label: 'My Library' },
     { id: 'graphics', icon: ImageIcon, label: 'Graphics' },
-    { id: 'templates', icon: FolderOpen, label: 'My Templates' },
     { id: 'patterns', icon: Grid3x3, label: 'Patterns/Textures' },
   ];
 
@@ -493,7 +496,6 @@ export function CustomDesignPage() {
       setIsTextPanelOpen(false);
       setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
-      setIsTemplatesPanelOpen(false);
       setIsPatternsPanelOpen(false);
       setActiveTool('upload');
     } else if (toolId === 'text') {
@@ -501,7 +503,6 @@ export function CustomDesignPage() {
       setIsUploadPanelOpen(false);
       setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
-      setIsTemplatesPanelOpen(false);
       setIsPatternsPanelOpen(false);
       setActiveTool('text');
     } else if (toolId === 'library') {
@@ -509,7 +510,6 @@ export function CustomDesignPage() {
       setIsUploadPanelOpen(false);
       setIsTextPanelOpen(false);
       setIsGraphicsPanelOpen(false);
-      setIsTemplatesPanelOpen(false);
       setIsPatternsPanelOpen(false);
       setActiveTool('library');
     } else if (toolId === 'graphics') {
@@ -517,24 +517,14 @@ export function CustomDesignPage() {
       setIsUploadPanelOpen(false);
       setIsTextPanelOpen(false);
       setIsLibraryPanelOpen(false);
-      setIsTemplatesPanelOpen(false);
       setIsPatternsPanelOpen(false);
       setActiveTool('graphics');
-    } else if (toolId === 'templates') {
-      setIsTemplatesPanelOpen(!isTemplatesPanelOpen);
-      setIsUploadPanelOpen(false);
-      setIsTextPanelOpen(false);
-      setIsLibraryPanelOpen(false);
-      setIsGraphicsPanelOpen(false);
-      setIsPatternsPanelOpen(false);
-      setActiveTool('templates');
     } else if (toolId === 'patterns') {
       setIsPatternsPanelOpen(!isPatternsPanelOpen);
       setIsUploadPanelOpen(false);
       setIsTextPanelOpen(false);
       setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
-      setIsTemplatesPanelOpen(false);
       setActiveTool('patterns');
     } else {
       setActiveTool(toolId);
@@ -587,6 +577,38 @@ export function CustomDesignPage() {
   // Handle clicking on recent upload
   const handleRecentUploadClick = (imageUrl: string) => {
     fabricCanvas.addImageToCanvas(imageUrl, { fit: true, center: true });
+  };
+
+  // Handle add graphic to canvas
+  const handleAddGraphic = (graphicUrl: string) => {
+    fabricCanvas.addImageToCanvas(graphicUrl, { fit: true, center: true });
+    setIsGraphicsPanelOpen(false);
+  };
+
+  // Handle apply pattern to selected object
+  const handleApplyPattern = async (patternUrl: string) => {
+    const canvas = fabricCanvas.canvasRef.current;
+    if (!canvas) return;
+
+    const activeObj = canvas.getActiveObject();
+    if (!activeObj) {
+      alert('Please select an object first to apply the pattern');
+      return;
+    }
+
+    // Load pattern image and apply as fill
+    const fabric = (await import('fabric')).fabric;
+    fabric.Image.fromURL(patternUrl, (img) => {
+      const pattern = new fabric.Pattern({
+        source: img.getElement() as HTMLImageElement,
+        repeat: 'repeat'
+      });
+      
+      activeObj.set('fill', pattern);
+      canvas.renderAll();
+    }, { crossOrigin: 'anonymous' });
+
+    setIsPatternsPanelOpen(false);
   };
 
   // Handle add text
@@ -1244,7 +1266,7 @@ export function CustomDesignPage() {
                       <h2 className="text-xl">Graphics</h2>
                       <div className="flex items-center gap-2 text-sm">
                         <div className="size-2 rounded-full bg-green-500"></div>
-                        <span className="text-gray-600">Available</span>
+                        <span className="text-gray-600">{graphics.length} Available</span>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsGraphicsPanelOpen(false)}>
@@ -1255,59 +1277,50 @@ export function CustomDesignPage() {
 
                 <div className="flex-1 overflow-y-auto p-5 min-h-0">
                   <div className="h-full space-y-4">
-                    <Input placeholder="Search graphics..." className="w-full" />
+                    {/* Category Filter Tabs */}
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                      {(['all', 'icon', 'logo', 'illustration', 'template'] as const).map((cat) => (
+                        <Button
+                          key={cat}
+                          variant={selectedGraphicCategory === cat ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setSelectedGraphicCategory(cat);
+                            fetchGraphics(cat === 'all' ? undefined : cat);
+                          }}
+                          className="capitalize shrink-0"
+                        >
+                          {cat}
+                        </Button>
+                      ))}
+                    </div>
                     
                     <div className="space-y-2">
-                      <p className="text-xs text-gray-500">Popular Graphics</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[1, 2, 3, 4, 5, 6].map((item) => (
-                          <div key={item} className="aspect-square bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer p-4">
-                            <div className="size-full flex items-center justify-center">
-                              <Circle className="size-16 text-gray-400" />
+                      <p className="text-xs text-gray-500">
+                        {selectedGraphicCategory === 'all' ? 'All Graphics' : `${selectedGraphicCategory.charAt(0).toUpperCase() + selectedGraphicCategory.slice(1)}s`}
+                      </p>
+                      {graphics.length === 0 ? (
+                        <div className="text-center py-12 text-gray-400">
+                          <ImageIcon className="size-16 mx-auto mb-3 opacity-30" />
+                          <p>No graphics available</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {graphics.map((graphic) => (
+                            <div 
+                              key={graphic.id} 
+                              className="aspect-square bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-blue-400 transition-colors cursor-pointer p-2"
+                              onClick={() => handleAddGraphic(graphic.cloudinary_url)}
+                            >
+                              <img 
+                                src={graphic.thumbnail_url} 
+                                alt={graphic.name}
+                                className="size-full object-contain"
+                              />
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* My Templates Panel - LEFT SIDE */}
-          {isTemplatesPanelOpen && (
-            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
-              <div className="h-full flex flex-col">
-                <div className="p-5 border-b border-gray-200 bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-xl">My Templates</h2>
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className="size-2 rounded-full bg-green-500"></div>
-                        <span className="text-gray-600">Available</span>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsTemplatesPanelOpen(false)}>
-                      <X className="size-5" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-5 min-h-0">
-                  <div className="h-full space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-xs text-gray-500">Saved Templates</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[1, 2, 3, 4, 5, 6].map((item) => (
-                          <div key={item} className="aspect-[4/5] bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
-                            <div className="size-full flex flex-col items-center justify-center p-4">
-                              <FolderOpen className="size-12 text-gray-400 mb-2" />
-                              <p className="text-xs text-gray-600">Template {item}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1325,7 +1338,7 @@ export function CustomDesignPage() {
                       <h2 className="text-xl">Patterns & Textures</h2>
                       <div className="flex items-center gap-2 text-sm">
                         <div className="size-2 rounded-full bg-green-500"></div>
-                        <span className="text-gray-600">Available</span>
+                        <span className="text-gray-600">{patterns.length} Available</span>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsPatternsPanelOpen(false)}>
@@ -1336,19 +1349,36 @@ export function CustomDesignPage() {
 
                 <div className="flex-1 overflow-y-auto p-5 min-h-0">
                   <div className="h-full space-y-4">
-                    <Input placeholder="Search patterns..." className="w-full" />
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                      <p className="font-medium mb-1">How to use patterns:</p>
+                      <p className="text-xs">1. Select an object on the canvas</p>
+                      <p className="text-xs">2. Click a pattern to apply it as fill</p>
+                    </div>
                     
                     <div className="space-y-2">
-                      <p className="text-xs text-gray-500">Popular Patterns</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[1, 2, 3, 4, 5, 6].map((item) => (
-                          <div key={item} className="aspect-square bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
-                            <div className="size-full flex items-center justify-center">
-                              <Grid3x3 className="size-16 text-gray-400" />
+                      <p className="text-xs text-gray-500">Available Patterns</p>
+                      {patterns.length === 0 ? (
+                        <div className="text-center py-12 text-gray-400">
+                          <Grid3x3 className="size-16 mx-auto mb-3 opacity-30" />
+                          <p>No patterns available</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {patterns.map((pattern) => (
+                            <div 
+                              key={pattern.id} 
+                              className="aspect-square bg-gray-50 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-blue-400 transition-colors cursor-pointer"
+                              onClick={() => handleApplyPattern(pattern.cloudinary_url)}
+                            >
+                              <img 
+                                src={pattern.thumbnail_url} 
+                                alt={pattern.name}
+                                className="size-full object-cover"
+                              />
                             </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
