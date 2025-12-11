@@ -2,74 +2,98 @@ import { CustomProductCard } from '../components/CustomProductCard';
 import { Button } from '../components/ui/button';
 import { SlidersHorizontal, Palette, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import Slider from 'react-slick';
+import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
+import { useMemo } from 'react';
+
+// Helper function to get representative product with color priority
+function getRepresentativeProduct(categoryProducts: any[]) {
+  if (!categoryProducts || categoryProducts.length === 0) return null;
+  
+  // Priority 1: White color
+  let product = categoryProducts.find(p => 
+    p.color?.name?.toLowerCase() === 'white'
+  );
+  
+  // Priority 2: Light colors (closest to white)
+  if (!product) {
+    const lightColors = ['cream', 'ivory', 'beige', 'light gray', 'off-white', 'pearl', 'off white'];
+    product = categoryProducts.find(p => {
+      const colorName = p.color?.name?.toLowerCase() || '';
+      return lightColors.some(c => colorName.includes(c));
+    });
+  }
+  
+  // Priority 3: Black (opposite of white)
+  if (!product) {
+    product = categoryProducts.find(p => 
+      p.color?.name?.toLowerCase() === 'black'
+    );
+  }
+  
+  // Priority 4: First available in array
+  return product || categoryProducts[0];
+}
 
 export function CustomProductsPage() {
-  const customProducts = [
-    {
-      id: '1',
-      name: 'T-Shirt - Round Neck',
-      price: 250,
-      image: 'https://images.unsplash.com/photo-1620799139834-6b8f844fbe61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHQtc2hpcnQlMjByb3VuZCUyMG5lY2t8ZW58MXx8fHwxNzYyOTg3NTQ5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'T-Shirt',
-      isNew: true,
-    },
-    {
-      id: '2',
-      name: 'T-Shirt - V Neck',
-      price: 250,
-      image: 'https://images.unsplash.com/photo-1620799139652-715e4d5b232d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHYlMjBuZWNrJTIwdHNoaXJ0fGVufDF8fHx8MTc2Mjk4NzU1MHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'T-Shirt',
-      isNew: true,
-    },
-    {
-      id: '3',
-      name: 'T-Shirt - Chinese Collar',
-      price: 280,
-      image: 'https://images.unsplash.com/photo-1651659802584-08bf160743dc?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMGNoaW5lc2UlMjBjb2xsYXIlMjBzaGlydHxlbnwxfHx8fDE3NjI5ODc1NTB8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'T-Shirt',
-      isNew: false,
-    },
-    {
-      id: '4',
-      name: 'Varsity Jacket',
-      price: 650,
-      image: 'https://images.unsplash.com/photo-1760458955495-9712cc8f79c0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHZhcnNpdHklMjBqYWNrZXR8ZW58MXx8fHwxNzYyOTg3NTUxfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Jacket',
-      isNew: true,
-    },
-    {
-      id: '5',
-      name: 'Hoodie - Premium Cotton',
-      price: 480,
-      image: 'https://images.unsplash.com/photo-1639600280284-6ef3f0d67fe1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMGhvb2RpZSUyMHByZW1pdW18ZW58MXx8fHwxNzYyOTcxODA4fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Hoodie',
-      isNew: false,
-    },
-    {
-      id: '6',
-      name: 'Polo Shirt',
-      price: 320,
-      image: 'https://images.unsplash.com/photo-1671438118097-479e63198629?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aGl0ZSUyMHBvbG8lMjBzaGlydHxlbnwxfHx8fDE3NjI5MzkzNDJ8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Shirt',
-      isNew: false,
-    },
-    {
-      id: '7',
-      name: 'Kids T-Shirt',
-      price: 200,
-      image: 'https://images.unsplash.com/photo-1731267776886-90f90af75eb1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwdC1zaGlydCUyMHdoaXRlfGVufDF8fHx8MTc2Mjk5MDk5MHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Kids',
-      isNew: true,
-    },
-    {
-      id: '8',
-      name: 'Kids Polo Shirt',
-      price: 220,
-      image: 'https://images.unsplash.com/photo-1659779193831-97ccb9fecfeb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwcG9sbyUyMHNoaXJ0fGVufDF8fHx8MTc2MjkzMjQzOHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Kids',
-      isNew: true,
-    },
-  ];
+  const { products, loading, error } = useCustomizableProducts();
+
+  // Group products by category and select representative for each
+  const representativeProducts = useMemo(() => {
+    if (!products || products.length === 0) return [];
+
+    // Group by exact category string
+    const grouped = products.reduce((acc: Record<string, any[]>, product: any) => {
+      const category = product.category || 'Uncategorized';
+      if (!acc[category]) {
+        acc[category] = [];
+      }
+      acc[category].push(product);
+      return acc;
+    }, {});
+
+    // Select representative for each category
+    return Object.entries(grouped).map(([category, categoryProducts]) => {
+      const representative = getRepresentativeProduct(categoryProducts);
+      if (!representative) return null;
+
+      // Get primary image (front view preferred)
+      const frontImage = representative.images?.find((img: any) => img.type === 'front');
+      const imageUrl = frontImage?.url || representative.images?.[0]?.url || 'https://images.unsplash.com/photo-1620799139834-6b8f844fbe61?w=500';
+
+      return {
+        id: representative.id,
+        name: representative.category, // Use category as display name
+        price: representative.retailPrice || 0,
+        image: imageUrl,
+        category: representative.category,
+        isNew: false, // Can be determined by createdAt if needed
+      };
+    }).filter(Boolean); // Remove null entries
+  }, [products]);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading customizable products...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Failed to load products: {error}</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
 
   const scrollToProducts = () => {
     const productsSection = document.getElementById('products-section');
@@ -214,15 +238,21 @@ export function CustomProductsPage() {
 
       {/* Products Grid */}
       <section className="container mx-auto px-4 py-12 md:px-6">
-        <div className="custom-products-carousel">
-          <Slider {...carouselSettings}>
-            {customProducts.map((product) => (
-              <div key={product.id} className="px-3">
-                <CustomProductCard {...product} />
-              </div>
-            ))}
-          </Slider>
-        </div>
+        {representativeProducts.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600">No customizable products available at the moment.</p>
+          </div>
+        ) : (
+          <div className="custom-products-carousel">
+            <Slider {...carouselSettings}>
+              {representativeProducts.map((product) => (
+                <div key={product.id} className="px-3">
+                  <CustomProductCard {...product} />
+                </div>
+              ))}
+            </Slider>
+          </div>
+        )}
       </section>
 
       {/* Bottom CTA */}

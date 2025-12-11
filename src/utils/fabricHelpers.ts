@@ -1,16 +1,57 @@
 import { Canvas, Object as FabricObject, Image as FabricImage } from 'fabric';
 
-// Print resolution constants
-export const PRINT_WIDTH = 4800;
-export const PRINT_HEIGHT = 5400;
+// Print area presets (at 300 DPI)
+export const PRINT_AREA_PRESETS = {
+  'A4': { 
+    width: 2480, 
+    height: 3508, 
+    label: 'A4 (210×297mm)',
+    physicalSize: '8.3×11.7"'
+  },
+  'Letter': { 
+    width: 2550, 
+    height: 3300, 
+    label: 'Letter (8.5×11")',
+    physicalSize: '8.5×11"'
+  },
+  'Legal': { 
+    width: 2550, 
+    height: 4200, 
+    label: 'Legal (8.5×14")',
+    physicalSize: '8.5×14"'
+  },
+  'Square': { 
+    width: 3600, 
+    height: 3600, 
+    label: 'Square (12×12")',
+    physicalSize: '12×12"'
+  },
+  'Custom': { 
+    width: 4800, 
+    height: 5400, 
+    label: 'Custom (16×18")',
+    physicalSize: '16×18"'
+  }
+} as const;
+
+export type PrintAreaPreset = keyof typeof PRINT_AREA_PRESETS;
+
+// Print resolution constant
 export const PRINT_DPI = 300;
 
-// UI canvas dimensions (scaled down for display)
+// Default print area (backward compatibility)
+export const PRINT_WIDTH = 4800;
+export const PRINT_HEIGHT = 5400;
+
+// UI canvas dimensions (scaled down for display at 25% zoom)
 export const UI_CANVAS_WIDTH = 240;  // Matches the design area in CustomDesignPage
 export const UI_CANVAS_HEIGHT = 280;
 
 // Calculate scale factor
 export const SCALE_FACTOR = UI_CANVAS_WIDTH / PRINT_WIDTH;
+
+// Default zoom level
+export const DEFAULT_ZOOM = 25; // 25% - fits print area comfortably on screen
 
 /**
  * Enforce canvas boundaries - prevent objects from leaving design area

@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { 
   ArrowLeft,
   ArrowRight,
@@ -34,7 +35,9 @@ import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { CanvasProvider } from '../contexts/CanvasContext';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { useCanvasResources } from '../hooks/useCanvasResources';
+import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
 import { AlertCircle } from 'lucide-react';
+import { PRINT_AREA_PRESETS, PrintAreaPreset, DEFAULT_ZOOM } from '../utils/fabricHelpers';
 
 type ViewSide = 'front' | 'back';
 
@@ -90,7 +93,8 @@ const categoryImages: Record<string, { front: string; back: string }> = {
 export function CustomDesignPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [printAreaSize, setPrintAreaSize] = useState<PrintAreaPreset>('Letter');
   const [activeTab, setActiveTab] = useState('edit');
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -139,10 +143,42 @@ export function CustomDesignPage() {
     },
   });
   
-  // Get category and subcategory from navigation state
-  const selectedCategory = location.state?.category || 'T-Shirt';
-  const selectedSubcategory = location.state?.subcategory || '';
+  // Get category from navigation state
+  const selectedCategory = location.state?.category || 'T-Shirt - Round Neck';
   const selectedProductName = location.state?.productName || '';
+
+  // Fetch all customizable products
+  const { products: allProducts, loading: productsLoading, error: productsError } = useCustomizableProducts();
+
+  // Filter products by exact category match
+  const categoryVariants = useMemo(() => {
+    if (!allProducts || allProducts.length === 0) return [];
+    
+    // Filter by exact category string
+    return allProducts.filter(product => product.category === selectedCategory);
+  }, [allProducts, selectedCategory]);
+
+  // Map database products to ClothingProduct format for UI
+  const clothingProducts: ClothingProduct[] = useMemo(() => {
+    return categoryVariants.map(product => {
+      // Get primary image
+      const frontImage = product.images?.find(img => img.type === 'front');
+      const imageUrl = frontImage?.url || product.images?.[0]?.url || 'https://images.unsplash.com/photo-1620799139834-6b8f844fbe61?w=500';
+      
+      return {
+        id: product.id,
+        name: product.name,
+        color: product.color?.name || 'Unknown',
+        sizes: product.sizes || ['S', 'M', 'L', 'XL'],
+        image: imageUrl,
+        noPrint: true,
+        frontPrint: product.printAreas?.includes('Front') || true,
+        backPrint: product.printAreas?.includes('Back') || true,
+        category: product.category,
+        subcategory: '', // No subcategory in new structure
+      };
+    });
+  }, [categoryVariants]);
 
   // Set initial product info from passed state
   useEffect(() => {
@@ -166,8 +202,8 @@ export function CustomDesignPage() {
     setLayers((prev) => [...prev, newLayer]);
   };
 
-  // Mock clothing products with subcategories
-  const clothingProducts: ClothingProduct[] = [
+  // Remove the hardcoded clothingProducts array - now using real data from above
+  const oldClothingProducts: ClothingProduct[] = [
     // Jacket/Varsity Variants
     { 
       id: '1', 
@@ -453,30 +489,13 @@ export function CustomDesignPage() {
     },
   ];
 
-  // Filter clothing products based on selected category AND subcategory
-  const filteredClothingProducts = clothingProducts.filter(product => {
-    // If subcategory is specified, filter by both category and subcategory
-    if (selectedSubcategory) {
-      return product.category === selectedCategory && product.subcategory === selectedSubcategory;
-    }
-    // Otherwise, just filter by category
-    return product.category === selectedCategory;
-  });
+  // Filtered products are already filtered above in categoryVariants/clothingProducts
+  const filteredClothingProducts = clothingProducts;
 
-  // Get category display name with subcategory support
-  const getCategoryDisplayName = (category: string, subcategory?: string) => {
-    if (subcategory) {
-      return `${subcategory} Variants`;
-    }
-    
-    const displayNames: Record<string, string> = {
-      'T-Shirt': 'T-Shirt Variants',
-      'Jacket': 'Varsity Jacket Variants',
-      'Hoodie': 'Hoodie Variants',
-      'Shirt': 'Polo Shirt Variants',
-      'Kids': 'Kids Clothing Variants'
-    };
-    return displayNames[category] || `${category} Variants`;
+  // Get category display name
+  const getCategoryDisplayName = (category: string) => {
+    // Use the full category string as display name with "Variants" suffix
+    return `${category} Variants`;
   };
 
   const leftTools = [
@@ -812,18 +831,35 @@ export function CustomDesignPage() {
                       </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="space-y-4">
+                      {/* Print Area Size Selector */}
+                      <div className="space-y-2">
+                        <Label htmlFor="printAreaSize" className="text-sm text-gray-600">Print Area Size</Label>
+                        <Select value={printAreaSize} onValueChange={(value: PrintAreaPreset) => setPrintAreaSize(value)}>
+                          <SelectTrigger id="printAreaSize" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(PRINT_AREA_PRESETS) as PrintAreaPreset[]).map((preset) => (
+                              <SelectItem key={preset} value={preset}>
+                                {PRINT_AREA_PRESETS[preset].label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between">
-                          <span className="text-gray-600">Size</span>
-                          <span>4800 × 5400 px</span>
+                          <span className="text-gray-600">Print Size</span>
+                          <span>{PRINT_AREA_PRESETS[printAreaSize].width} × {PRINT_AREA_PRESETS[printAreaSize].height} px</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-600">DPI</span>
                           <span>300</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-gray-600">Product size</span>
-                          <span>16" × 18" (40.6 × 45.7 cm)</span>
+                          <span className="text-gray-600">Physical Size</span>
+                          <span>{PRINT_AREA_PRESETS[printAreaSize].physicalSize}</span>
                         </div>
                       </div>
                     </CollapsibleContent>
@@ -841,10 +877,10 @@ export function CustomDesignPage() {
                 <div className="p-5 border-b border-gray-200 bg-gray-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <h2 className="text-xl">{getCategoryDisplayName(selectedCategory, selectedSubcategory)}</h2>
+                      <h2 className="text-xl">{getCategoryDisplayName(selectedCategory)}</h2>
                       <div className="flex items-center gap-2 text-sm">
                         <div className="size-2 rounded-full bg-green-500"></div>
-                        <span className="text-gray-600">Available</span>
+                        <span className="text-gray-600">{productsLoading ? 'Loading...' : `${clothingProducts.length} Available`}</span>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsClothingPanelOpen(false)}>
@@ -873,12 +909,23 @@ export function CustomDesignPage() {
                   `}</style>
                   
                   <div className="variants-scroll h-full overflow-y-auto space-y-4">
-                    {filteredClothingProducts.length === 0 ? (
+                    {productsLoading ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-800 mb-4"></div>
+                        <p className="text-sm text-gray-600">Loading variants...</p>
+                      </div>
+                    ) : productsError ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                        <AlertCircle className="size-16 text-red-400 mb-4" />
+                        <p className="text-sm text-red-600 mb-2">Failed to load products</p>
+                        <p className="text-xs text-gray-500">{productsError}</p>
+                      </div>
+                    ) : filteredClothingProducts.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center px-6">
                         <Package className="size-16 text-gray-300 mb-4" />
-                        <p className="text-sm text-gray-600 mb-2">No products found</p>
+                        <p className="text-sm text-gray-600 mb-2">No variants found</p>
                         <p className="text-xs text-gray-500">
-                          Try selecting a different category
+                          No products available for {selectedCategory}
                         </p>
                       </div>
                     ) : (
@@ -1472,7 +1519,7 @@ export function CustomDesignPage() {
           {/* Canvas Area */}
           <div className="flex-1 overflow-auto p-8 flex flex-col items-center justify-center bg-gray-50">
             <div className="relative flex items-center justify-center mb-8">
-              <div className="relative w-[700px] h-[800px] flex items-center justify-center">
+              <div className="relative w-[1400px] h-[1600px] flex items-center justify-center">
                 <img 
                   src={selectedView === 'front' 
                     ? categoryImages[selectedCategory]?.front 
@@ -1488,22 +1535,24 @@ export function CustomDesignPage() {
                 <div
                   className="absolute border-2 border-dashed border-blue-600 rounded pointer-events-none bg-transparent"
                   style={{
-                    width: '240px',
-                    height: '280px',
-                    top: selectedView === 'front' ? '180px' : '160px',
+                    width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
+                    height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
+                    top: selectedView === 'front' ? '200px' : '180px',
                     left: '50%',
                     transform: 'translateX(-50%)',
                   }}
                 >
-                  <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Design Area</div>
+                  <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+                    Design Area - {PRINT_AREA_PRESETS[printAreaSize].label}
+                  </div>
                   
                   {/* Fabric.js Canvas - positioned inside design area */}
                   <canvas 
                     id="design-canvas" 
                     className="absolute inset-0 pointer-events-auto"
                     style={{
-                      width: '240px',
-                      height: '280px',
+                      width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
+                      height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
                     }}
                   />
                 </div>
