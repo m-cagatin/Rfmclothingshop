@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
-import { Eye, Edit, XCircle, Plus, Archive, Trash2, RotateCcw, CheckCircle } from 'lucide-react';
+import { Input } from '../../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Eye, Edit, XCircle, Plus, Archive, Trash2, RotateCcw, CheckCircle, Search, Filter, X } from 'lucide-react';
 import { ImageWithFallback } from '../../components/figma/ImageWithFallback';
 import { useCustomizableProducts } from '../../hooks/useCustomizableProducts';
 import { CustomizableProductForm } from '../../components/admin/CustomizableProductForm';
@@ -19,6 +21,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../../components/ui/popover';
+import { Badge } from '../../components/ui/badge';
 
 export function CustomizableProductsPage() {
   const {
@@ -41,8 +49,40 @@ export function CustomizableProductsPage() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [archiveConfirm, setArchiveConfirm] = useState<string | null>(null);
+  
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedType, setSelectedType] = useState<string>('all');
+  const [showPreDesignedOnly, setShowPreDesignedOnly] = useState(false);
 
-  const filteredProducts = getProductsByStatus(activeTab);
+  // Get products by status first
+  const statusFilteredProducts = getProductsByStatus(activeTab);
+  
+  // Apply all filters
+  const filteredProducts = statusFilteredProducts.filter(product => {
+    // Search filter
+    if (searchQuery && !product.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    
+    // Category filter
+    if (selectedCategory !== 'all' && product.category !== selectedCategory) {
+      return false;
+    }
+    
+    // Type filter
+    if (selectedType !== 'all' && product.type !== selectedType) {
+      return false;
+    }
+    
+    // Pre-Designed filter
+    if (showPreDesignedOnly && !product.category.startsWith('Pre-Designed')) {
+      return false;
+    }
+    
+    return true;
+  });
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -119,50 +159,220 @@ export function CustomizableProductsPage() {
     );
   }
 
+  const activeFilterCount = [
+    activeTab !== 'active',
+    selectedCategory !== 'all',
+    selectedType !== 'all',
+    showPreDesignedOnly
+  ].filter(Boolean).length;
+
   return (
     <AdminLayout>
       <div className="p-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Customizable Products</h1>
-            <p className="text-gray-600">Manage products with custom designs, sizes, and color options</p>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">Customizable Products</h1>
+          <p className="text-gray-600">Manage products with custom designs, sizes, and color options</p>
+        </div>
+
+        {/* Top Bar: Search + Filter + Add Product */}
+        <div className="flex items-center gap-3 mb-4">
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+            <Input
+              placeholder="Search products by name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
           </div>
+
+          {/* Filter Dropdown */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="relative">
+                <Filter className="size-4 mr-2" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-4" align="end">
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-3">Filter Products</h4>
+                </div>
+
+                {/* Status Filter */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Status</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant={activeTab === 'active' ? 'default' : 'outline'}
+                      onClick={() => setActiveTab('active')}
+                      className={`justify-start ${activeTab === 'active' ? 'bg-black hover:bg-black/90' : ''}`}
+                    >
+                      Active ({getProductsByStatus('active').length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={activeTab === 'inactive' ? 'default' : 'outline'}
+                      onClick={() => setActiveTab('inactive')}
+                      className={`justify-start ${activeTab === 'inactive' ? 'bg-black hover:bg-black/90' : ''}`}
+                    >
+                      Inactive ({getProductsByStatus('inactive').length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={activeTab === 'archived' ? 'default' : 'outline'}
+                      onClick={() => setActiveTab('archived')}
+                      className={`justify-start ${activeTab === 'archived' ? 'bg-black hover:bg-black/90' : ''}`}
+                    >
+                      Archived ({getProductsByStatus('archived').length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={activeTab === 'all' ? 'default' : 'outline'}
+                      onClick={() => setActiveTab('all')}
+                      className={`justify-start ${activeTab === 'all' ? 'bg-black hover:bg-black/90' : ''}`}
+                    >
+                      All ({products.length})
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4 space-y-3">
+                  {/* Category */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Category</label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        <SelectItem value="T-Shirt - Chinese Collar">T-Shirt - Chinese Collar</SelectItem>
+                        <SelectItem value="T-Shirt - V-Neck">T-Shirt - V-Neck</SelectItem>
+                        <SelectItem value="T-Shirt - Round Neck">T-Shirt - Round Neck</SelectItem>
+                        <SelectItem value="Jogging Pants">Jogging Pants</SelectItem>
+                        <SelectItem value="Polo Shirt">Polo Shirt</SelectItem>
+                        <SelectItem value="Sando (Jersey) - V-Neck">Sando (Jersey) - V-Neck</SelectItem>
+                        <SelectItem value="Sando (Jersey) - Round Neck">Sando (Jersey) - Round Neck</SelectItem>
+                        <SelectItem value="Sando (Jersey) - NBA Cut">Sando (Jersey) - NBA Cut</SelectItem>
+                        <SelectItem value="Shorts">Shorts</SelectItem>
+                        <SelectItem value="Warmers">Warmers</SelectItem>
+                        <SelectItem value="Varsity Jacket">Varsity Jacket</SelectItem>
+                        <SelectItem value="Pre-Designed T-Shirt - Chinese Collar">Pre-Designed T-Shirt - Chinese Collar</SelectItem>
+                        <SelectItem value="Pre-Designed T-Shirt - V-Neck">Pre-Designed T-Shirt - V-Neck</SelectItem>
+                        <SelectItem value="Pre-Designed T-Shirt - Round Neck">Pre-Designed T-Shirt - Round Neck</SelectItem>
+                        <SelectItem value="Pre-Designed Jogging Pants">Pre-Designed Jogging Pants</SelectItem>
+                        <SelectItem value="Pre-Designed Polo Shirt">Pre-Designed Polo Shirt</SelectItem>
+                        <SelectItem value="Pre-Designed Sando (Jersey) - V-Neck">Pre-Designed Sando (Jersey) - V-Neck</SelectItem>
+                        <SelectItem value="Pre-Designed Sando (Jersey) - Round Neck">Pre-Designed Sando (Jersey) - Round Neck</SelectItem>
+                        <SelectItem value="Pre-Designed Sando (Jersey) - NBA Cut">Pre-Designed Sando (Jersey) - NBA Cut</SelectItem>
+                        <SelectItem value="Pre-Designed Shorts">Pre-Designed Shorts</SelectItem>
+                        <SelectItem value="Pre-Designed Warmers">Pre-Designed Warmers</SelectItem>
+                        <SelectItem value="Pre-Designed Varsity Jacket">Pre-Designed Varsity Jacket</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Type */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Type</label>
+                    <Select value={selectedType} onValueChange={setSelectedType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="Unisex">Unisex</SelectItem>
+                        <SelectItem value="Men">Men</SelectItem>
+                        <SelectItem value="Women">Women</SelectItem>
+                        <SelectItem value="Kids">Kids</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Pre-Designed Toggle */}
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Pre-Designed Only</label>
+                    <Button
+                      size="sm"
+                      variant={showPreDesignedOnly ? 'default' : 'outline'}
+                      onClick={() => setShowPreDesignedOnly(!showPreDesignedOnly)}
+                      className={showPreDesignedOnly ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                    >
+                      {showPreDesignedOnly ? 'ON' : 'OFF'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Clear Filters Button */}
+                <div className="border-t pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSelectedCategory('all');
+                      setSelectedType('all');
+                      setShowPreDesignedOnly(false);
+                      setActiveTab('active');
+                    }}
+                    className="w-full"
+                  >
+                    Clear All Filters
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Add Product Button */}
           <Button className="bg-black hover:bg-black/90" onClick={handleAddProduct}>
             <Plus className="size-4 mr-2" />
             Add New Product
           </Button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6">
-          <Button
-            variant={activeTab === 'active' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('active')}
-            className={activeTab === 'active' ? 'bg-black hover:bg-black/90' : ''}
-          >
-            Active ({getProductsByStatus('active').length})
-          </Button>
-          <Button
-            variant={activeTab === 'inactive' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('inactive')}
-            className={activeTab === 'inactive' ? 'bg-black hover:bg-black/90' : ''}
-          >
-            Inactive ({getProductsByStatus('inactive').length})
-          </Button>
-          <Button
-            variant={activeTab === 'archived' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('archived')}
-            className={activeTab === 'archived' ? 'bg-black hover:bg-black/90' : ''}
-          >
-            Archived ({getProductsByStatus('archived').length})
-          </Button>
-          <Button
-            variant={activeTab === 'all' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('all')}
-            className={activeTab === 'all' ? 'bg-black hover:bg-black/90' : ''}
-          >
-            All ({products.length})
-          </Button>
+        {/* Active Filter Badges */}
+        {activeFilterCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="text-sm text-gray-600">Active filters:</span>
+            {activeTab !== 'active' && (
+              <Badge variant="secondary" className="gap-1">
+                Status: {activeTab}
+                <X className="size-3 cursor-pointer" onClick={() => setActiveTab('active')} />
+              </Badge>
+            )}
+            {selectedCategory !== 'all' && (
+              <Badge variant="secondary" className="gap-1">
+                {selectedCategory}
+                <X className="size-3 cursor-pointer" onClick={() => setSelectedCategory('all')} />
+              </Badge>
+            )}
+            {selectedType !== 'all' && (
+              <Badge variant="secondary" className="gap-1">
+                Type: {selectedType}
+                <X className="size-3 cursor-pointer" onClick={() => setSelectedType('all')} />
+              </Badge>
+            )}
+            {showPreDesignedOnly && (
+              <Badge variant="secondary" className="bg-purple-100 text-purple-700 gap-1">
+                Pre-Designed Only
+                <X className="size-3 cursor-pointer" onClick={() => setShowPreDesignedOnly(false)} />
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Results Counter */}
+        <div className="text-sm text-gray-600 mb-4">
+          Showing {filteredProducts.length} of {statusFilteredProducts.length} products
         </div>
 
         {/* Select All Checkbox */}
