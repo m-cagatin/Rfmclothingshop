@@ -42,6 +42,62 @@ exports.updateProductStatus = updateProductStatus;
 const prisma_1 = require("../prisma");
 const cloudinaryService = __importStar(require("./cloudinary.service"));
 /**
+ * Transform database product to frontend format
+ */
+function transformProductToFrontend(dbProduct) {
+    // Helper to convert underscore to space for enums
+    const formatEnumValue = (value) => {
+        if (!value)
+            return '';
+        return value.replace(/_/g, ' ');
+    };
+    return {
+        id: dbProduct.id.toString(),
+        category: dbProduct.category,
+        name: dbProduct.name,
+        type: dbProduct.gender || 'Unisex',
+        sizes: Array.isArray(dbProduct.available_sizes) ? dbProduct.available_sizes : [],
+        fitType: formatEnumValue(dbProduct.fit_type) || 'Classic',
+        fitDescription: dbProduct.fit_description || '',
+        description: dbProduct.description || '',
+        // Transform images array
+        images: (dbProduct.customizable_product_images || []).map((img) => ({
+            id: img.image_id,
+            url: img.image_url,
+            publicId: img.cloudinary_public_id || '',
+            type: img.image_type,
+            displayOrder: img.display_order
+        })),
+        fabricComposition: dbProduct.fabric_composition || '',
+        fabricWeight: dbProduct.fabric_weight || '',
+        texture: dbProduct.texture || '',
+        baseCost: Number(dbProduct.base_cost) || 0,
+        retailPrice: Number(dbProduct.retail_price) || 0,
+        sizePricing: typeof dbProduct.size_pricing === 'object' ? dbProduct.size_pricing : {},
+        frontPrintCost: Number(dbProduct.front_print_cost) || 0,
+        backPrintCost: Number(dbProduct.back_print_cost) || 0,
+        differentiationType: dbProduct.differentiation_type || 'none',
+        color: dbProduct.color_name ? {
+            name: dbProduct.color_name,
+            hexCode: dbProduct.color_hex
+        } : undefined,
+        variant: dbProduct.variant_name ? {
+            name: dbProduct.variant_name,
+            image: dbProduct.variant_image_url || '',
+            publicId: dbProduct.variant_image_public_id
+        } : undefined,
+        sizeAvailability: typeof dbProduct.size_availability === 'object' ? dbProduct.size_availability : {},
+        printMethod: formatEnumValue(dbProduct.print_method) || 'DTG',
+        printAreas: Array.isArray(dbProduct.print_areas) ? dbProduct.print_areas : [],
+        designRequirements: dbProduct.design_requirements || '',
+        turnaroundTime: dbProduct.turnaround_time || '',
+        minOrderQuantity: dbProduct.minimum_order_qty || 1,
+        status: dbProduct.status || 'active',
+        createdAt: dbProduct.created_at?.toISOString() || new Date().toISOString(),
+        updatedAt: dbProduct.updated_at?.toISOString() || new Date().toISOString(),
+    };
+}
+/**
  * Get all customizable products with their images
  */
 async function getAllProducts() {
@@ -58,7 +114,7 @@ async function getAllProducts() {
             created_at: 'desc'
         }
     });
-    return products;
+    return products.map(transformProductToFrontend);
 }
 /**
  * Get a single product by ID
@@ -75,7 +131,7 @@ async function getProductById(id) {
             }
         }
     });
-    return product;
+    return product ? transformProductToFrontend(product) : null;
 }
 /**
  * Create a new customizable product with images
@@ -128,7 +184,7 @@ async function createProduct(data) {
             customizable_product_images: true
         }
     });
-    return product;
+    return transformProductToFrontend(product);
 }
 /**
  * Update an existing product
@@ -209,7 +265,7 @@ async function updateProduct(data) {
             customizable_product_images: true
         }
     });
-    return product;
+    return transformProductToFrontend(product);
 }
 /**
  * Delete a product and its images

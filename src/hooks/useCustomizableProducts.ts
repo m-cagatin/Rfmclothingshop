@@ -11,6 +11,54 @@ function transformEnumValue(value: string | undefined): string | undefined {
   return value.replace(/ /g, '_');
 }
 
+// Transform API response (snake_case) to frontend format (camelCase)
+function transformApiProduct(apiProduct: any): CustomizableProduct {
+  return {
+    id: apiProduct.id?.toString() || '',
+    category: apiProduct.category || '',
+    name: apiProduct.name || '',
+    type: apiProduct.gender || '',
+    sizes: apiProduct.available_sizes || [],
+    fitType: apiProduct.fit_type || '',
+    fitDescription: apiProduct.fit_description || '',
+    description: apiProduct.description || '',
+    images: (apiProduct.customizable_product_images || []).map((img: any) => ({
+      id: img.image_id,
+      url: img.image_url,
+      publicId: img.cloudinary_public_id,
+      type: img.image_type,
+      displayOrder: img.display_order || 0,
+    })),
+    fabricComposition: apiProduct.fabric_composition || '',
+    fabricWeight: apiProduct.fabric_weight || '',
+    texture: apiProduct.texture || '',
+    baseCost: parseFloat(apiProduct.base_cost || '0'),
+    retailPrice: parseFloat(apiProduct.retail_price || '0'),
+    sizePricing: apiProduct.size_pricing || {},
+    frontPrintCost: apiProduct.front_print_cost ? parseFloat(apiProduct.front_print_cost) : undefined,
+    backPrintCost: apiProduct.back_print_cost ? parseFloat(apiProduct.back_print_cost) : undefined,
+    differentiationType: apiProduct.differentiation_type || 'none',
+    color: apiProduct.color_name ? {
+      name: apiProduct.color_name,
+      hexCode: apiProduct.color_hex || undefined,
+    } : undefined,
+    variant: apiProduct.variant_name ? {
+      name: apiProduct.variant_name,
+      image: apiProduct.variant_image_url || '',
+      publicId: apiProduct.variant_image_public_id || undefined,
+    } : undefined,
+    sizeAvailability: apiProduct.size_availability || {},
+    printMethod: apiProduct.print_method || '',
+    printAreas: apiProduct.print_areas || [],
+    designRequirements: apiProduct.design_requirements || '',
+    turnaroundTime: apiProduct.turnaround_time || '',
+    minOrderQuantity: apiProduct.minimum_order_qty || 1,
+    status: apiProduct.status || 'active',
+    createdAt: apiProduct.created_at || new Date().toISOString(),
+    updatedAt: apiProduct.updated_at || new Date().toISOString(),
+  };
+}
+
 // Mock initial data
 const initialProducts: CustomizableProduct[] = [
   {
@@ -86,7 +134,9 @@ export function useCustomizableProducts() {
         throw new Error('Failed to fetch products');
       }
       const data = await response.json();
-      setProducts(data);
+      // Transform API response from snake_case to camelCase
+      const transformedProducts = data.map(transformApiProduct);
+      setProducts(transformedProducts);
     } catch (err) {
       console.error('Error fetching products:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch products');

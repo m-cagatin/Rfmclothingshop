@@ -1,0 +1,81 @@
+/* Canvas Editor Styles - Zoom & Pan System */
+
+/* CSS Transform Wrapper - applies zoom and pan */
+.canvas-transform-wrapper {
+  position: relative;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+/* Prevent blurry rendering at various zoom levels */
+.canvas-transform-wrapper img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: high-quality;
+}
+
+/* Smooth zoom animation (disabled during pan) */
+.canvas-transform-wrapper.zoom-transition {
+  transition: transform 0.15s ease-out;
+}
+
+/* Pan cursor states */
+.pan-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  user-select: none;
+}
+
+.pan-overlay.grab {
+  cursor: grab;
+}
+
+.pan-overlay.grabbing {
+  cursor: grabbing;
+}
+
+/* Canvas area overflow handling */
+.canvas-area-container {
+  overflow: hidden;
+  position: relative;
+}
+
+/* Fabric canvas pointer events */
+.canvas-transform-wrapper canvas {
+  pointer-events: auto;
+}
+
+/* Design area highlight on hover */
+.design-area-box {
+  transition: border-color 0.2s ease;
+}
+
+.design-area-box:hover {
+  border-color: #3b82f6;
+}
+
+/* Zoom controls enhancement */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zoom-preset-select {
+  font-size: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: white;
+  cursor: pointer;
+}
+
+.zoom-preset-select:hover {
+  border-color: #9ca3af;
+}
+
+.zoom-preset-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}

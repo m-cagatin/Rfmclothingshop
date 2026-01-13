@@ -9,6 +9,8 @@ const cors_1 = __importDefault(require("cors"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const customizableProducts_routes_1 = __importDefault(require("./routes/customizableProducts.routes"));
+const cloudinary_routes_1 = __importDefault(require("./routes/cloudinary.routes"));
+const canvasResources_routes_1 = __importDefault(require("./routes/canvasResources.routes"));
 const app = (0, express_1.default)();
 // Simple CORS - allow frontend origins
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000')
@@ -23,6 +25,8 @@ app.use((0, cookie_parser_1.default)());
 // Routes
 app.use('/auth', auth_routes_1.default);
 app.use('/api/customizable-products', customizableProducts_routes_1.default);
+app.use('/api/cloudinary', cloudinary_routes_1.default);
+app.use('/api/canvas-resources', canvasResources_routes_1.default);
 app.get('/health', (_req, res) => {
     res.json({ ok: true, timestamp: new Date().toISOString() });
 });

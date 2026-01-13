@@ -52,23 +52,25 @@ export function CustomProductsPage() {
     }, {});
 
     // Select representative for each category
-    return Object.entries(grouped).map(([category, categoryProducts]) => {
-      const representative = getRepresentativeProduct(categoryProducts);
-      if (!representative) return null;
+    return Object.entries(grouped)
+      .map(([category, categoryProducts]) => {
+        const representative = getRepresentativeProduct(categoryProducts);
+        if (!representative) return null;
 
-      // Get primary image (front view preferred)
-      const frontImage = representative.images?.find((img: any) => img.type === 'front');
-      const imageUrl = frontImage?.url || representative.images?.[0]?.url || 'https://images.unsplash.com/photo-1620799139834-6b8f844fbe61?w=500';
+        // Get primary image (front view preferred)
+        const frontImage = representative.images?.find((img: any) => img.type === 'front');
+        const imageUrl = frontImage?.url || representative.images?.[0]?.url || 'https://images.unsplash.com/photo-1620799139834-6b8f844fbe61?w=500';
 
-      return {
-        id: representative.id,
-        name: representative.category, // Use category as display name
-        price: representative.retailPrice || 0,
-        image: imageUrl,
-        category: representative.category,
-        isNew: false, // Can be determined by createdAt if needed
-      };
-    }).filter(Boolean); // Remove null entries
+        return {
+          id: representative.id,
+          name: representative.category, // Use category as display name
+          price: representative.retailPrice || 0,
+          image: imageUrl,
+          category: representative.category,
+          isNew: false, // Can be determined by createdAt if needed
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null); // Type-safe filter
   }, [products]);
 
   // Show loading state

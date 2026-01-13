@@ -35,9 +35,11 @@ import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { CanvasProvider } from '../contexts/CanvasContext';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { useCanvasResources } from '../hooks/useCanvasResources';
+import { useCanvasZoomPan } from '../hooks/useCanvasZoomPan';
 import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
 import { AlertCircle } from 'lucide-react';
 import { PRINT_AREA_PRESETS, PrintAreaPreset, DEFAULT_ZOOM } from '../utils/fabricHelpers';
+import '../styles/canvasEditor.css';
 
 type ViewSide = 'front' | 'back';
 
@@ -94,6 +96,33 @@ export function CustomDesignPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  
+  // Canvas zoom/pan hook (Phase 2)
+  const {
+    canvasScale,
+    panOffset,
+    isPanning,
+    spaceKeyPressed,
+    isPanningCanvas,
+    isSpacePanning,
+    zoomIn,
+    zoomOut,
+    setZoom: setCanvasZoom,
+    zoomToPreset,
+    resetView,
+    startPan,
+    updatePan,
+    endPan,
+    handleCanvasMouseDown,
+    handleCanvasMouseMove,
+    handleCanvasMouseUp,
+    handleOverlayMouseDown,
+    handleOverlayMouseMove,
+    handleOverlayMouseUp,
+    handleKeyDown,
+    handleKeyUp,
+    handleWheel,
+  } = useCanvasZoomPan();
   const [printAreaSize, setPrintAreaSize] = useState<PrintAreaPreset>('Letter');
   const [activeTab, setActiveTab] = useState('edit');
   const [activeTool, setActiveTool] = useState<string | null>(null);
@@ -142,6 +171,24 @@ export function CustomDesignPage() {
       console.log('Object selected:', obj);
     },
   });
+
+  // Keyboard event listeners from hook
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    
+    // Prevent pinch zoom on touch devices
+    document.addEventListener('touchmove', (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
   
   // Get category from navigation state
   const selectedCategory = location.state?.category || 'T-Shirt - Round Neck';
@@ -606,7 +653,7 @@ export function CustomDesignPage() {
 
   // Handle apply pattern to selected object
   const handleApplyPattern = async (patternUrl: string) => {
-    const canvas = fabricCanvas.canvasRef.current;
+    const canvas = fabricCanvas.canvasRef;
     if (!canvas) return;
 
     const activeObj = canvas.getActiveObject();
@@ -616,16 +663,15 @@ export function CustomDesignPage() {
     }
 
     // Load pattern image and apply as fill
-    const fabric = (await import('fabric')).fabric;
-    fabric.Image.fromURL(patternUrl, (img) => {
-      const pattern = new fabric.Pattern({
-        source: img.getElement() as HTMLImageElement,
-        repeat: 'repeat'
-      });
-      
-      activeObj.set('fill', pattern);
-      canvas.renderAll();
-    }, { crossOrigin: 'anonymous' });
+    const { Image: FabricImage, Pattern } = await import('fabric');
+    const img = await FabricImage.fromURL(patternUrl, { crossOrigin: 'anonymous' });
+    const pattern = new Pattern({
+      source: img.getElement() as HTMLImageElement,
+      repeat: 'repeat'
+    });
+    
+    activeObj.set('fill', pattern);
+    canvas.renderAll();
 
     setIsPatternsPanelOpen(false);
   };
@@ -668,7 +714,7 @@ export function CustomDesignPage() {
       resetView: fabricCanvas.resetView,
       exportHighDPI: fabricCanvas.exportHighDPI,
     }}>
-      <div className="h-screen flex bg-gray-100 overflow-x-hidden">
+      <div className="h-screen flex bg-gray-100 overflow-hidden fixed inset-0">
       {/* Left Vertical Toolbar - Spans full height */}
       <div className="bg-white border-r w-20 flex flex-col items-center py-6 gap-4 z-10">
         {leftTools.map((tool) => {
@@ -1517,54 +1563,71 @@ export function CustomDesignPage() {
           )}
 
           {/* Canvas Area */}
-          <div className="flex-1 overflow-auto p-8 flex flex-col items-center justify-center bg-gray-50">
-            <div className="relative flex items-center justify-center mb-8">
-              <div className="relative w-[1400px] h-[1600px] flex items-center justify-center">
-                <img 
-                  src={selectedView === 'front' 
-                    ? categoryImages[selectedCategory]?.front 
-                    : categoryImages[selectedCategory]?.back
-                  }
-                  alt={`${selectedCategory} ${selectedView}`}
-                  className="w-full h-full object-contain"
-                  style={{ 
-                    filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
-                  }}
-                />
+          <div 
+            className="flex-1 overflow-hidden flex flex-col bg-gray-50 relative canvas-area-container"
+            style={{ 
+              cursor: isPanningCanvas ? 'grabbing' : 'default'
+            }}
+            onMouseDown={handleCanvasMouseDown}
+            onMouseMove={handleCanvasMouseMove}
+            onMouseUp={handleCanvasMouseUp}
+            onMouseLeave={handleCanvasMouseUp}
+          >
+            {/* Pan Overlay - appears when Space is pressed */}
+            {spaceKeyPressed && (
+              <div
+                className="absolute inset-0 z-50"
+                style={{ cursor: isSpacePanning ? 'grabbing' : 'grab' }}
+                onMouseDown={handleOverlayMouseDown}
+                onMouseMove={handleOverlayMouseMove}
+                onMouseUp={handleOverlayMouseUp}
+                onMouseLeave={handleOverlayMouseUp}
+              />
+            )}
 
-                <div
-                  className="absolute border-2 border-dashed border-blue-600 rounded pointer-events-none bg-transparent"
+            {/* Canvas container - takes up available space */}
+            <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
+
+            {/* CSS Transform Wrapper - applies zoom and pan */}
+            <div 
+              className={`canvas-transform-wrapper ${!isPanning ? 'zoom-transition' : ''}`}
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${canvasScale})`,
+                transformOrigin: 'center center',
+              }}
+            >
+              {/* Design Area Box with Canvas */}
+              <div
+                className="relative border-2 border-dashed border-blue-600 rounded bg-white shadow-lg design-area-box"
+                style={{
+                  width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
+                  height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
+                }}
+              >
+                <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+                  Design Area - {PRINT_AREA_PRESETS[printAreaSize].label}
+                </div>
+                
+                {/* Fabric.js Canvas - positioned inside design area */}
+                <canvas 
+                  id="design-canvas" 
+                  className="absolute inset-0 pointer-events-auto"
                   style={{
                     width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
                     height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
-                    top: selectedView === 'front' ? '200px' : '180px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
                   }}
-                >
-                  <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
-                    Design Area - {PRINT_AREA_PRESETS[printAreaSize].label}
-                  </div>
-                  
-                  {/* Fabric.js Canvas - positioned inside design area */}
-                  <canvas 
-                    id="design-canvas" 
-                    className="absolute inset-0 pointer-events-auto"
-                    style={{
-                      width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
-                      height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
-                    }}
-                  />
-                </div>
+                />
               </div>
             </div>
+            </div>
 
-            <div className="flex items-center gap-3">
+            {/* Front/Back Toggle - At bottom with transparent container */}
+            <div className="py-4 flex items-center justify-center gap-3">
               <button
                 onClick={() => setSelectedView('front')}
-                className={`px-6 py-2.5 rounded-full transition-all ${
+                className={`px-6 py-2.5 rounded-full transition-all shadow-md ${
                   selectedView === 'front'
-                    ? 'bg-gray-800 text-white shadow-md'
+                    ? 'bg-gray-800 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
                 }`}
               >
@@ -1572,9 +1635,9 @@ export function CustomDesignPage() {
               </button>
               <button
                 onClick={() => setSelectedView('back')}
-                className={`px-6 py-2.5 rounded-full transition-all ${
+                className={`px-6 py-2.5 rounded-full transition-all shadow-md ${
                   selectedView === 'back'
-                    ? 'bg-gray-800 text-white shadow-md'
+                    ? 'bg-gray-800 text-white'
                     : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
                 }`}
               >
@@ -1591,24 +1654,18 @@ export function CustomDesignPage() {
               variant="outline"
               size="icon"
               className="size-8"
-              onClick={() => {
-                const newZoom = Math.max(50, zoom - 10);
-                setZoom(newZoom);
-                fabricCanvas.setZoom(newZoom / 100);
-              }}
+              onClick={zoomOut}
+              title="Zoom Out (Ctrl+-)"
             >
               <ZoomOut className="size-4" />
             </Button>
-            <span className="text-sm min-w-[50px] text-center">{zoom}%</span>
+            <span className="text-sm min-w-[50px] text-center">{Math.round(canvasScale * 100)}%</span>
             <Button
               variant="outline"
               size="icon"
               className="size-8"
-              onClick={() => {
-                const newZoom = Math.min(200, zoom + 10);
-                setZoom(newZoom);
-                fabricCanvas.setZoom(newZoom / 100);
-              }}
+              onClick={zoomIn}
+              title="Zoom In (Ctrl++)"
             >
               <ZoomIn className="size-4" />
             </Button>
@@ -1616,13 +1673,27 @@ export function CustomDesignPage() {
               variant="outline"
               size="icon"
               className="size-8 ml-1"
-              onClick={() => {
-                setZoom(100);
-                fabricCanvas.resetView();
-              }}
+              onClick={resetView}
+              title="Reset View (Ctrl+0)"
             >
               <RotateCcw className="size-4" />
             </Button>
+            
+            {/* Zoom Presets */}
+            <select
+              value={Math.round(canvasScale * 100)}
+              onChange={(e) => zoomToPreset(Number(e.target.value))}
+              className="zoom-preset-select ml-2"
+            >
+              <option value={25}>25%</option>
+              <option value={50}>50%</option>
+              <option value={75}>75%</option>
+              <option value={100}>100%</option>
+              <option value={150}>150%</option>
+              <option value={200}>200%</option>
+              <option value={300}>300%</option>
+              <option value={400}>400%</option>
+            </select>
           </div>
 
           <Button size="sm" className="bg-green-600 hover:bg-green-700">

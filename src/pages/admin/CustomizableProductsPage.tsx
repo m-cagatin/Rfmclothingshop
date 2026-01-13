@@ -436,7 +436,7 @@ export function CustomizableProductsPage() {
                     </div>
                     <div>
                       <p className="text-gray-500">SIZES</p>
-                      <p className="font-bold">{product.sizes.length}</p>
+                      <p className="font-bold">{product.sizes?.length || 0}</p>
                     </div>
                     <div>
                       <p className="text-gray-500">COLOR</p>

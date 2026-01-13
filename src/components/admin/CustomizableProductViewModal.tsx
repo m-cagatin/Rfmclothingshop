@@ -49,7 +49,7 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
               </div>
               <div>
                 <p className="text-sm text-gray-500">Available Sizes</p>
-                <p className="font-medium">{product.sizes.join(', ')}</p>
+                <p className="font-medium">{product.sizes?.join(', ') || 'N/A'}</p>
               </div>
             </div>
             {product.fitDescription && (
@@ -257,7 +257,7 @@ export function CustomizableProductViewModal({ product, onClose }: CustomizableP
                   <p className="font-medium">{product.printMethod}</p>
                 </div>
               )}
-              {product.printAreas.length > 0 && (
+              {product.printAreas && product.printAreas.length > 0 && (
                 <div>
                   <p className="text-sm text-gray-500">Print Areas</p>
                   <p className="font-medium">{product.printAreas.join(', ')}</p>
