@@ -2,6 +2,7 @@ import { Button } from '../ui/button';
 import { X } from 'lucide-react';
 import { Canvas, Object as FabricObject, IText, Image as FabricImage } from 'fabric';
 import { UniversalControls } from './UniversalControls';
+import { LayerOrderControls } from './LayerOrderControls';
 import { TextControls } from './TextControls';
 import { ImageControls } from './ImageControls';
 import { ShapeControls } from './ShapeControls';
@@ -139,6 +140,14 @@ function PropertiesContent({
           object={object}
           canvas={canvas}
           onUpdate={onUpdate}
+        />
+      )}
+
+      {/* Layer Order Controls - Phase 6 */}
+      {canvas && (
+        <LayerOrderControls
+          object={object}
+          canvas={canvas}
         />
       )}
 

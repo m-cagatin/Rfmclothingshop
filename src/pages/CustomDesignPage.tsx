@@ -23,6 +23,8 @@ import {
   RotateCcw,
   ChevronDown,
   ChevronUp,
+  ChevronsDown,
+  ChevronsUp,
   Maximize,
   Upload,
   Grid3x3,
@@ -578,6 +580,8 @@ export function CustomDesignPage() {
       setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
       setIsPatternsPanelOpen(false);
+      setIsClothingPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       setActiveTool('upload');
     } else if (toolId === 'text') {
       setIsTextPanelOpen(!isTextPanelOpen);
@@ -585,6 +589,8 @@ export function CustomDesignPage() {
       setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
       setIsPatternsPanelOpen(false);
+      setIsClothingPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       setActiveTool('text');
     } else if (toolId === 'library') {
       setIsLibraryPanelOpen(!isLibraryPanelOpen);
@@ -592,6 +598,8 @@ export function CustomDesignPage() {
       setIsTextPanelOpen(false);
       setIsGraphicsPanelOpen(false);
       setIsPatternsPanelOpen(false);
+      setIsClothingPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       setActiveTool('library');
     } else if (toolId === 'graphics') {
       setIsGraphicsPanelOpen(!isGraphicsPanelOpen);
@@ -599,6 +607,8 @@ export function CustomDesignPage() {
       setIsTextPanelOpen(false);
       setIsLibraryPanelOpen(false);
       setIsPatternsPanelOpen(false);
+      setIsClothingPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       setActiveTool('graphics');
     } else if (toolId === 'patterns') {
       setIsPatternsPanelOpen(!isPatternsPanelOpen);
@@ -606,6 +616,8 @@ export function CustomDesignPage() {
       setIsTextPanelOpen(false);
       setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
+      setIsClothingPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       setActiveTool('patterns');
     } else {
       setActiveTool(toolId);
@@ -1552,66 +1564,142 @@ export function CustomDesignPage() {
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <div className="size-2 rounded-full bg-blue-500"></div>
-                    <span className="text-gray-600">{layers.length} {layers.length === 1 ? 'item' : 'items'} added</span>
+                    <span className="text-gray-600">{fabricCanvas.canvasObjects.length} {fabricCanvas.canvasObjects.length === 1 ? 'object' : 'objects'}</span>
                   </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4">
-                  {layers.length === 0 ? (
+                  {fabricCanvas.canvasObjects.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center px-6">
                       <Layers className="size-16 text-gray-300 mb-4" />
-                      <p className="text-sm text-gray-600 mb-2">No layers yet</p>
+                      <p className="text-sm text-gray-600 mb-2">No objects yet</p>
                       <p className="text-xs text-gray-500">
-                        Click "Add to Customize" in My Clothing to add items here
+                        Add text, images, or graphics to see them listed here
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {layers.map((layer, index) => (
-                        <div key={layer.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                          <div className="bg-gray-50 p-3 flex items-center gap-3">
-                            <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
-                              <img src={layer.image} alt={layer.productName} className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-sm truncate">{layer.productName}</h4>
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <span>{layer.color}</span>
-                                <span>•</span>
-                                <span>Size {layer.size}</span>
-                              </div>
-                            </div>
-                            <div className="text-xs text-gray-500">#{index + 1}</div>
-                          </div>
+                    <div className="space-y-2">
+                      {fabricCanvas.canvasObjects.map((obj, index) => {
+                        const isSelected = fabricCanvas.selectedObject === obj;
+                        const objectType = obj.type || 'object';
+                        const getObjectIcon = () => {
+                          if (objectType === 'i-text' || objectType === 'text') return '📝';
+                          if (objectType === 'image') return '🖼️';
+                          if (objectType === 'rect') return '▭';
+                          if (objectType === 'circle') return '⭕';
+                          if (objectType === 'polygon') return '⬠';
+                          return '📦';
+                        };
+                        const getObjectLabel = () => {
+                          if (objectType === 'i-text' || objectType === 'text') {
+                            const text = (obj as any).text || '';
+                            return text.length > 20 ? text.substring(0, 20) + '...' : text;
+                          }
+                          if (objectType === 'image') return 'Image';
+                          if (objectType === 'rect') return 'Rectangle';
+                          if (objectType === 'circle') return 'Circle';
+                          if (objectType === 'polygon') return 'Polygon';
+                          return 'Object';
+                        };
 
-                          <div className="p-3 space-y-2">
-                            {layer.variants.length === 0 ? (
-                              <p className="text-xs text-gray-500 italic">No designs added yet</p>
-                            ) : (
-                              layer.variants.map((variant, vIndex) => (
-                                <div
-                                  key={vIndex}
-                                  className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded text-xs"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <div className="size-2 rounded-full bg-blue-500"></div>
-                                    <span className="capitalize">{variant.view}</span>
-                                  </div>
-                                  <span className="text-gray-600">{variant.design}</span>
-                                </div>
-                              ))
-                            )}
+                        return (
+                          <div 
+                            key={index} 
+                            className={`border rounded-lg overflow-hidden transition-all ${
+                              isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div 
+                              className="p-3 flex items-center gap-3 cursor-pointer"
+                              onClick={() => {
+                                fabricCanvas.canvasRef?.setActiveObject(obj);
+                                fabricCanvas.canvasRef?.renderAll();
+                                setIsPropertiesPanelOpen(true);
+                              }}
+                            >
+                              <span className="text-xl">{getObjectIcon()}</span>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-sm font-medium truncate">{getObjectLabel()}</h4>
+                                <p className="text-xs text-gray-500 capitalize">{objectType}</p>
+                              </div>
+                              <div className="text-xs text-gray-400">#{fabricCanvas.canvasObjects.length - index}</div>
+                            </div>
+                            
+                            {/* Layer Order Controls */}
+                            <div className="px-3 pb-3 grid grid-cols-4 gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  fabricCanvas.canvasRef?.bringObjectToFront(obj);
+                                  fabricCanvas.canvasRef?.renderAll();
+                                }}
+                                title="Bring to Front"
+                              >
+                                <ChevronsUp className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  fabricCanvas.canvasRef?.bringObjectForward(obj);
+                                  fabricCanvas.canvasRef?.renderAll();
+                                }}
+                                title="Bring Forward"
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  fabricCanvas.canvasRef?.sendObjectBackwards(obj);
+                                  fabricCanvas.canvasRef?.renderAll();
+                                }}
+                                title="Send Backward"
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  fabricCanvas.canvasRef?.sendObjectToBack(obj);
+                                  fabricCanvas.canvasRef?.renderAll();
+                                }}
+                                title="Send to Back"
+                              >
+                                <ChevronsDown className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
 
-                {layers.length > 0 && (
+                {fabricCanvas.canvasObjects.length > 0 && (
                   <div className="p-4 border-t border-gray-200">
-                    <Button variant="outline" size="sm" className="w-full">
-                      Clear All Layers
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => {
+                        if (window.confirm('Clear all objects from canvas?')) {
+                          fabricCanvas.clearCanvas();
+                        }
+                      }}
+                    >
+                      Clear All Objects
                     </Button>
                   </div>
                 )}
