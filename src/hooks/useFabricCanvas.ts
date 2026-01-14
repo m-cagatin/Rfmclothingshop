@@ -17,6 +17,8 @@ export interface UseFabricCanvasOptions {
   onObjectModified?: (obj: FabricObject) => void;
   onSelectionCreated?: (obj: FabricObject | null) => void;
   onSelectionCleared?: () => void;
+  canvasWidth?: number;
+  canvasHeight?: number;
 }
 
 export function useFabricCanvas(
@@ -34,11 +36,12 @@ export function useFabricCanvas(
     if (!canvasElement) return;
 
     const canvas = new Canvas(canvasId, {
-      width: UI_CANVAS_WIDTH,
-      height: UI_CANVAS_HEIGHT,
+      width: options.canvasWidth || UI_CANVAS_WIDTH,
+      height: options.canvasHeight || UI_CANVAS_HEIGHT,
       backgroundColor: 'transparent',
       selection: true,
       preserveObjectStacking: true,
+      enableRetinaScaling: false, // Prevent automatic scaling that might interfere
     });
 
     canvasRef.current = canvas;
@@ -92,7 +95,22 @@ export function useFabricCanvas(
     return () => {
       canvas.dispose();
     };
-  }, [canvasId]);
+  }, [canvasId]); // Only recreate when canvasId changes
+
+  // Update canvas dimensions when they change WITHOUT recreating the canvas
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    
+    const canvasWidth = options.canvasWidth || UI_CANVAS_WIDTH;
+    const canvasHeight = options.canvasHeight || UI_CANVAS_HEIGHT;
+    
+    canvasRef.current.setDimensions({
+      width: canvasWidth,
+      height: canvasHeight,
+    });
+    
+    canvasRef.current.renderAll();
+  }, [options.canvasWidth, options.canvasHeight]);
 
   // Update canvas objects array
   const updateCanvasObjects = useCallback(() => {
@@ -109,19 +127,23 @@ export function useFabricCanvas(
       Image.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img) => {
         if (!canvasRef.current) return;
 
+        const canvas = canvasRef.current;
+        const canvasWidth = canvas.width || UI_CANVAS_WIDTH;
+        const canvasHeight = canvas.height || UI_CANVAS_HEIGHT;
+
         // Fit to design area if requested
         if (options.fit !== false) {
-          fitToDesignArea(img, UI_CANVAS_WIDTH, UI_CANVAS_HEIGHT);
+          fitToDesignArea(img, canvasWidth, canvasHeight);
         }
 
         // Center if requested
         if (options.center !== false) {
-          centerObject(img, canvasRef.current);
+          centerObject(img, canvas);
         }
 
-        canvasRef.current.add(img);
-        canvasRef.current.setActiveObject(img);
-        canvasRef.current.renderAll();
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        canvas.renderAll();
       });
     },
     []
@@ -141,14 +163,18 @@ export function useFabricCanvas(
     ) => {
       if (!canvasRef.current) return;
 
+      const canvas = canvasRef.current;
+      const centerX = (canvas.width || UI_CANVAS_WIDTH) / 2;
+      const centerY = (canvas.height || UI_CANVAS_HEIGHT) / 2;
+
       const textObj = new IText(text, {
         fontSize: options.fontSize || 40,
         fontFamily: options.fontFamily || 'Arial',
         fill: options.fill || '#000000',
         fontWeight: options.fontWeight || 'normal',
         fontStyle: options.fontStyle || 'normal',
-        left: UI_CANVAS_WIDTH / 2,
-        top: UI_CANVAS_HEIGHT / 2,
+        left: centerX,
+        top: centerY,
         originX: 'center',
         originY: 'center',
       });

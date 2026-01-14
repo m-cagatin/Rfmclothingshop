@@ -37,6 +37,7 @@ import { useImageUpload } from '../hooks/useImageUpload';
 import { useCanvasResources } from '../hooks/useCanvasResources';
 import { useCanvasZoomPan } from '../hooks/useCanvasZoomPan';
 import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
+import { PropertiesPanel } from '../components/customizer/PropertiesPanel';
 import { AlertCircle } from 'lucide-react';
 import { PRINT_AREA_PRESETS, PrintAreaPreset, DEFAULT_ZOOM } from '../utils/fabricHelpers';
 import '../styles/canvasEditor.css';
@@ -133,6 +134,7 @@ export function CustomDesignPage() {
   const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
   const [isGraphicsPanelOpen, setIsGraphicsPanelOpen] = useState(false);
   const [isPatternsPanelOpen, setIsPatternsPanelOpen] = useState(false);
+  const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
   const [isProductionCostOpen, setIsProductionCostOpen] = useState(true);
   const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
   const [selectedSize, setSelectedSize] = useState('medium');
@@ -159,8 +161,14 @@ export function CustomDesignPage() {
   const { graphics, patterns, fetchGraphics } = useCanvasResources();
   const [selectedGraphicCategory, setSelectedGraphicCategory] = useState<'all' | 'icon' | 'logo' | 'illustration' | 'template'>('all');
   
+  // Calculate canvas dimensions based on print area preset
+  const canvasWidth = Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100));
+  const canvasHeight = Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100));
+
   // Initialize Fabric.js canvas
   const fabricCanvas = useFabricCanvas('design-canvas', {
+    canvasWidth,
+    canvasHeight,
     onObjectAdded: (obj) => {
       console.log('Object added:', obj);
     },
@@ -171,6 +179,13 @@ export function CustomDesignPage() {
       console.log('Object selected:', obj);
     },
   });
+
+  // Auto-open Properties panel when object selected
+  useEffect(() => {
+    if (fabricCanvas.selectedObject) {
+      setIsPropertiesPanelOpen(true);
+    }
+  }, [fabricCanvas.selectedObject]);
 
   // Keyboard event listeners from hook
   useEffect(() => {
@@ -697,6 +712,17 @@ export function CustomDesignPage() {
     setTextContent('');
   };
 
+  // Handle object update from Properties Panel
+  const handleObjectUpdate = (updates: Record<string, any>) => {
+    const canvas = fabricCanvas.canvasRef;
+    const selectedObj = fabricCanvas.selectedObject;
+    
+    if (!canvas || !selectedObj) return;
+
+    selectedObj.set(updates);
+    canvas.renderAll();
+  };
+
   return (
     <CanvasProvider value={{
       fabricCanvas: fabricCanvas.canvasRef,
@@ -751,10 +777,41 @@ export function CustomDesignPage() {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => setIsClothingPanelOpen(!isClothingPanelOpen)}
+              onClick={() => {
+                setIsClothingPanelOpen(!isClothingPanelOpen);
+                // Close left-side panels when opening My Clothing
+                if (!isClothingPanelOpen) {
+                  setIsUploadPanelOpen(false);
+                  setIsTextPanelOpen(false);
+                  setIsLibraryPanelOpen(false);
+                  setIsGraphicsPanelOpen(false);
+                  setIsPatternsPanelOpen(false);
+                }
+              }}
               className={`${isClothingPanelOpen ? 'bg-gray-800 text-white hover:bg-gray-700 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'}`}
             >
               My Clothing
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsPropertiesPanelOpen(!isPropertiesPanelOpen);
+                // Close left-side panels when opening Properties
+                if (!isPropertiesPanelOpen) {
+                  setIsUploadPanelOpen(false);
+                  setIsTextPanelOpen(false);
+                  setIsLibraryPanelOpen(false);
+                  setIsGraphicsPanelOpen(false);
+                  setIsPatternsPanelOpen(false);
+                }
+              }}
+              className={`${isPropertiesPanelOpen ? 'bg-gray-800 text-white hover:bg-gray-700 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'}`}
+            >
+              Properties
+              {fabricCanvas.selectedObject && (
+                <span className="ml-2 size-2 rounded-full bg-green-500"></span>
+              )}
             </Button>
           </div>
 
@@ -1562,6 +1619,15 @@ export function CustomDesignPage() {
             </div>
           )}
 
+          {/* Properties Panel - RIGHT SIDE */}
+          <PropertiesPanel
+            isOpen={isPropertiesPanelOpen}
+            onClose={() => setIsPropertiesPanelOpen(false)}
+            selectedObject={fabricCanvas.selectedObject}
+            canvas={fabricCanvas.canvasRef}
+            onUpdate={handleObjectUpdate}
+          />
+
           {/* Canvas Area */}
           <div 
             className="flex-1 overflow-hidden flex flex-col bg-gray-50 relative canvas-area-container"
@@ -1604,14 +1670,14 @@ export function CustomDesignPage() {
                   height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
                 }}
               >
-                <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+                <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded" style={{ pointerEvents: 'none' }}>
                   Design Area - {PRINT_AREA_PRESETS[printAreaSize].label}
                 </div>
                 
                 {/* Fabric.js Canvas - positioned inside design area */}
                 <canvas 
                   id="design-canvas" 
-                  className="absolute inset-0 pointer-events-auto"
+                  className="absolute inset-0"
                   style={{
                     width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
                     height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
