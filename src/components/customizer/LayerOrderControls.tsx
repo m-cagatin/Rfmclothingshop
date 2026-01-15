@@ -7,27 +7,32 @@ import { Label } from '../ui/label';
 interface LayerOrderControlsProps {
   object: FabricObject;
   canvas: Canvas;
+  onUpdate?: () => void;
 }
 
-export function LayerOrderControls({ object, canvas }: LayerOrderControlsProps) {
+export function LayerOrderControls({ object, canvas, onUpdate }: LayerOrderControlsProps) {
   const bringToFront = () => {
     canvas.bringObjectToFront(object);
     canvas.renderAll();
+    onUpdate?.();
   };
 
   const bringForward = () => {
     canvas.bringObjectForward(object);
     canvas.renderAll();
+    onUpdate?.();
   };
 
   const sendBackward = () => {
     canvas.sendObjectBackwards(object);
     canvas.renderAll();
+    onUpdate?.();
   };
 
   const sendToBack = () => {
     canvas.sendObjectToBack(object);
     canvas.renderAll();
+    onUpdate?.();
   };
 
   return (

@@ -319,5 +319,6 @@ export function useFabricCanvas(
     setZoom,
     resetView,
     exportHighDPI,
+    updateCanvasObjects,
   };
 }

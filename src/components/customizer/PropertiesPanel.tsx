@@ -13,6 +13,7 @@ interface PropertiesPanelProps {
   selectedObject: FabricObject | null;
   canvas: Canvas | null;
   onUpdate: (props: Partial<FabricObject>) => void;
+  onLayerUpdate?: () => void;
 }
 
 export function PropertiesPanel({ 
@@ -20,7 +21,8 @@ export function PropertiesPanel({
   onClose, 
   selectedObject, 
   canvas,
-  onUpdate 
+  onUpdate,
+  onLayerUpdate
 }: PropertiesPanelProps) {
   if (!isOpen) return null;
 
@@ -57,6 +59,7 @@ export function PropertiesPanel({
               object={selectedObject} 
               canvas={canvas}
               onUpdate={onUpdate}
+              onLayerUpdate={onLayerUpdate}
             />
           ) : (
             <EmptyState />
@@ -96,11 +99,13 @@ function EmptyState() {
 function PropertiesContent({ 
   object, 
   canvas,
-  onUpdate 
+  onUpdate,
+  onLayerUpdate
 }: { 
   object: FabricObject; 
   canvas: Canvas | null;
   onUpdate: (props: Partial<FabricObject>) => void;
+  onLayerUpdate?: () => void;
 }) {
   // Get object type for display
   const getObjectTypeLabel = (obj: FabricObject): string => {
@@ -148,6 +153,7 @@ function PropertiesContent({
         <LayerOrderControls
           object={object}
           canvas={canvas}
+          onUpdate={onLayerUpdate}
         />
       )}
 

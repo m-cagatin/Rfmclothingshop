@@ -139,6 +139,7 @@ export function CustomDesignPage() {
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
   const [isProductionCostOpen, setIsProductionCostOpen] = useState(true);
   const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
+  const [expandedLayerIds, setExpandedLayerIds] = useState<Set<any>>(new Set());
   const [selectedSize, setSelectedSize] = useState('medium');
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState('');
@@ -1579,9 +1580,12 @@ export function CustomDesignPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {fabricCanvas.canvasObjects.map((obj, index) => {
+                      {[...fabricCanvas.canvasObjects].reverse().map((obj, index) => {
                         const isSelected = fabricCanvas.selectedObject === obj;
+                        const isExpanded = expandedLayerIds.has(obj);
                         const objectType = obj.type || 'object';
+                        const actualIndex = fabricCanvas.canvasObjects.length - 1 - index;
+                        
                         const getObjectIcon = () => {
                           if (objectType === 'i-text' || objectType === 'text') return '📝';
                           if (objectType === 'image') return '🖼️';
@@ -1590,10 +1594,11 @@ export function CustomDesignPage() {
                           if (objectType === 'polygon') return '⬠';
                           return '📦';
                         };
+                        
                         const getObjectLabel = () => {
                           if (objectType === 'i-text' || objectType === 'text') {
                             const text = (obj as any).text || '';
-                            return text.length > 20 ? text.substring(0, 20) + '...' : text;
+                            return text.length > 25 ? text.substring(0, 25) + '...' : text || 'Empty Text';
                           }
                           if (objectType === 'image') return 'Image';
                           if (objectType === 'rect') return 'Rectangle';
@@ -1602,107 +1607,143 @@ export function CustomDesignPage() {
                           return 'Object';
                         };
 
+                        const handleLayerAction = (action: 'front' | 'forward' | 'backward' | 'back', e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          if (!fabricCanvas.canvasRef) return;
+
+                          const canvas = fabricCanvas.canvasRef;
+                          
+                          // Perform the action
+                          if (action === 'front') {
+                            canvas.bringObjectToFront(obj);
+                          } else if (action === 'forward') {
+                            canvas.bringObjectForward(obj);
+                          } else if (action === 'backward') {
+                            canvas.sendObjectBackwards(obj);
+                          } else if (action === 'back') {
+                            canvas.sendObjectToBack(obj);
+                          }
+                          
+                          canvas.renderAll();
+                          
+                          // Update the objects list to reflect new order
+                          fabricCanvas.updateCanvasObjects?.();
+                          
+                          // Auto-collapse the layer controls after action
+                          setExpandedLayerIds(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(obj);
+                            return newSet;
+                          });
+                          
+                          // Visual feedback - button flash
+                          const button = e.currentTarget as HTMLButtonElement;
+                          button.classList.add('bg-blue-500', 'text-white');
+                          setTimeout(() => {
+                            button.classList.remove('bg-blue-500', 'text-white');
+                          }, 200);
+                        };
+
                         return (
                           <div 
-                            key={index} 
+                            key={actualIndex} 
                             className={`border rounded-lg overflow-hidden transition-all ${
-                              isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                              isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
                             }`}
                           >
-                            <div 
-                              className="p-3 flex items-center gap-3 cursor-pointer"
-                              onClick={() => {
-                                fabricCanvas.canvasRef?.setActiveObject(obj);
-                                fabricCanvas.canvasRef?.renderAll();
-                                setIsPropertiesPanelOpen(true);
-                              }}
-                            >
-                              <span className="text-xl">{getObjectIcon()}</span>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="text-sm font-medium truncate">{getObjectLabel()}</h4>
-                                <p className="text-xs text-gray-500 capitalize">{objectType}</p>
+                            {/* Compact Header */}
+                            <div className="flex items-center gap-2 p-2.5 bg-white hover:bg-gray-50 transition-colors">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newExpanded = new Set(expandedLayerIds);
+                                  if (isExpanded) {
+                                    newExpanded.delete(obj);
+                                  } else {
+                                    newExpanded.add(obj);
+                                  }
+                                  setExpandedLayerIds(newExpanded);
+                                }}
+                                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                title={isExpanded ? 'Collapse' : 'Expand controls'}
+                              >
+                                <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                              
+                              <div 
+                                className="flex items-center gap-2 flex-1 cursor-pointer"
+                                onClick={() => {
+                                  fabricCanvas.canvasRef?.setActiveObject(obj);
+                                  fabricCanvas.canvasRef?.renderAll();
+                                  setIsPropertiesPanelOpen(true);
+                                }}
+                              >
+                                <span className="text-lg">{getObjectIcon()}</span>
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="text-xs font-medium truncate">{getObjectLabel()}</h4>
+                                </div>
                               </div>
-                              <div className="text-xs text-gray-400">#{fabricCanvas.canvasObjects.length - index}</div>
+                              
+                              <div className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                isSelected ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+                              }`}>
+                                #{index + 1}
+                              </div>
                             </div>
                             
-                            {/* Layer Order Controls */}
-                            <div className="px-3 pb-3 grid grid-cols-4 gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  fabricCanvas.canvasRef?.bringObjectToFront(obj);
-                                  fabricCanvas.canvasRef?.renderAll();
-                                }}
-                                title="Bring to Front"
-                              >
-                                <ChevronsUp className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  fabricCanvas.canvasRef?.bringObjectForward(obj);
-                                  fabricCanvas.canvasRef?.renderAll();
-                                }}
-                                title="Bring Forward"
-                              >
-                                <ChevronUp className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  fabricCanvas.canvasRef?.sendObjectBackwards(obj);
-                                  fabricCanvas.canvasRef?.renderAll();
-                                }}
-                                title="Send Backward"
-                              >
-                                <ChevronDown className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  fabricCanvas.canvasRef?.sendObjectToBack(obj);
-                                  fabricCanvas.canvasRef?.renderAll();
-                                }}
-                                title="Send to Back"
-                              >
-                                <ChevronsDown className="h-3 w-3" />
-                              </Button>
-                            </div>
+                            {/* Collapsible Layer Controls */}
+                            {isExpanded && (
+                              <div className="px-2.5 pb-2.5 bg-gray-50 border-t border-gray-200">
+                                <div className="grid grid-cols-4 gap-1.5 pt-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 px-1 text-[10px] flex flex-col items-center justify-center gap-0.5 hover:bg-blue-100 transition-colors"
+                                    onClick={(e) => handleLayerAction('front', e)}
+                                    title="Bring to Front"
+                                  >
+                                    <ChevronsUp className="h-3 w-3" />
+                                    <span>Front</span>
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 px-1 text-[10px] flex flex-col items-center justify-center gap-0.5 hover:bg-blue-100 transition-colors"
+                                    onClick={(e) => handleLayerAction('forward', e)}
+                                    title="Bring Forward"
+                                  >
+                                    <ChevronUp className="h-3 w-3" />
+                                    <span>Forward</span>
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 px-1 text-[10px] flex flex-col items-center justify-center gap-0.5 hover:bg-blue-100 transition-colors"
+                                    onClick={(e) => handleLayerAction('backward', e)}
+                                    title="Send Backward"
+                                  >
+                                    <ChevronDown className="h-3 w-3" />
+                                    <span>Backward</span>
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 px-1 text-[10px] flex flex-col items-center justify-center gap-0.5 hover:bg-blue-100 transition-colors"
+                                    onClick={(e) => handleLayerAction('back', e)}
+                                    title="Send to Back"
+                                  >
+                                    <ChevronsDown className="h-3 w-3" />
+                                    <span>Back</span>
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   )}
                 </div>
-
-                {fabricCanvas.canvasObjects.length > 0 && (
-                  <div className="p-4 border-t border-gray-200">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full"
-                      onClick={() => {
-                        if (window.confirm('Clear all objects from canvas?')) {
-                          fabricCanvas.clearCanvas();
-                        }
-                      }}
-                    >
-                      Clear All Objects
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -1714,6 +1755,7 @@ export function CustomDesignPage() {
             selectedObject={fabricCanvas.selectedObject}
             canvas={fabricCanvas.canvasRef}
             onUpdate={handleObjectUpdate}
+            onLayerUpdate={fabricCanvas.updateCanvasObjects}
           />
 
           {/* Canvas Area */}
