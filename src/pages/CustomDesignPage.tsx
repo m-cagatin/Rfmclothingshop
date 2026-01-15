@@ -57,6 +57,15 @@ interface ClothingProduct {
   backPrint: boolean;
   category: string;
   subcategory: string;
+  // New fields from database
+  fitType?: string;
+  fitDescription?: string;
+  colorHex?: string;
+  variantName?: string;
+  differentiationType?: string;
+  retailPrice?: number;
+  frontPrintCost?: number;
+  backPrintCost?: number;
 }
 
 interface LayerItem {
@@ -140,6 +149,7 @@ export function CustomDesignPage() {
   const [isProductionCostOpen, setIsProductionCostOpen] = useState(true);
   const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
   const [expandedLayerIds, setExpandedLayerIds] = useState<Set<any>>(new Set());
+  const [expandedPricingIds, setExpandedPricingIds] = useState<Set<string>>(new Set());
   const [selectedSize, setSelectedSize] = useState('medium');
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState('');
@@ -233,7 +243,7 @@ export function CustomDesignPage() {
       return {
         id: product.id,
         name: product.name,
-        color: product.color?.name || 'Unknown',
+        color: product.color?.name || product.variant?.name || 'Unknown',
         sizes: product.sizes || ['S', 'M', 'L', 'XL'],
         image: imageUrl,
         noPrint: true,
@@ -241,6 +251,15 @@ export function CustomDesignPage() {
         backPrint: product.printAreas?.includes('Back') || true,
         category: product.category,
         subcategory: '', // No subcategory in new structure
+        // New fields from database
+        fitType: product.fitType,
+        fitDescription: product.fitDescription,
+        colorHex: product.color?.hexCode,
+        variantName: product.variant?.name,
+        differentiationType: product.differentiationType,
+        retailPrice: product.retailPrice,
+        frontPrintCost: product.frontPrintCost,
+        backPrintCost: product.backPrintCost,
       };
     });
   }, [categoryVariants]);
@@ -1046,15 +1065,15 @@ export function CustomDesignPage() {
                       </div>
                     ) : (
                       filteredClothingProducts.map((product) => {
-                        const colorMap: Record<string, string> = {
-                          'Black': '#1a1a1a',
-                          'White': '#ffffff',
-                          'Navy Blue': '#1e3a8a',
-                          'Gray': '#6b7280',
-                          'Green': '#16a34a',
-                          'Red': '#dc2626',
-                        };
-                        const bgColor = colorMap[product.color] || '#d9d9d9';
+                        const isPricingExpanded = expandedPricingIds.has(product.id);
+                        
+                        // Calculate pricing
+                        const basePrice = product.retailPrice || 350;
+                        const frontCost = product.frontPrintCost || 100;
+                        const backCost = product.backPrintCost || 100;
+                        const noPrintPrice = basePrice;
+                        const frontPrintPrice = basePrice + frontCost;
+                        const backPrintPrice = basePrice + backCost;
 
                         return (
                           <div
@@ -1077,6 +1096,14 @@ export function CustomDesignPage() {
                                     {product.name}
                                   </h3>
 
+                                  {/* Category */}
+                                  {product.category && (
+                                    <div className="text-xs text-gray-600">
+                                      Category: <span className="font-medium">{product.category}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Sizes */}
                                   <div className="space-y-1">
                                     <span className="text-xs text-gray-500">Sizes:</span>
                                     <div className="flex flex-wrap gap-1.5">
@@ -1093,30 +1120,80 @@ export function CustomDesignPage() {
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-3 pl-1">
-                                <div 
-                                  className="size-12 rounded-md border-2 border-gray-300 shadow-sm flex-shrink-0"
-                                  style={{ backgroundColor: bgColor }}
-                                />
-                                <div className="flex flex-col">
-                                  <span className="text-xs text-gray-500">Color</span>
-                                  <span className="text-sm text-gray-800">{product.color}</span>
-                                </div>
+                              {/* Color/Variant and Fit Info */}
+                              <div className="space-y-2 pl-1">
+                                {/* Color or Variant */}
+                                {product.differentiationType === 'color' && product.colorHex ? (
+                                  <div className="flex items-center gap-3">
+                                    <div 
+                                      className="size-10 rounded-md border-2 border-gray-300 shadow-sm flex-shrink-0"
+                                      style={{ backgroundColor: product.colorHex }}
+                                    />
+                                    <div className="flex flex-col">
+                                      <span className="text-xs text-gray-500">Color</span>
+                                      <span className="text-sm text-gray-800">{product.color}</span>
+                                    </div>
+                                  </div>
+                                ) : product.differentiationType === 'variant' && product.variantName ? (
+                                  <div className="text-xs">
+                                    <span className="text-gray-500">Variant: </span>
+                                    <span className="text-gray-800 font-medium">{product.variantName}</span>
+                                  </div>
+                                ) : null}
+
+                                {/* Fit Info */}
+                                {(product.fitType || product.fitDescription) && (
+                                  <div className="text-xs">
+                                    {product.fitType && (
+                                      <span className="text-gray-600">
+                                        <span className="text-gray-500">Fit: </span>
+                                        {product.fitType}
+                                        {product.fitDescription && ' | '}
+                                      </span>
+                                    )}
+                                    {product.fitDescription && (
+                                      <span className="text-gray-500">{product.fitDescription}</span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
-                              <div className="space-y-2 pt-2 border-t border-gray-100">
-                                <div className="flex items-center justify-between py-1.5 px-2 bg-gray-50 border border-gray-200 rounded">
-                                  <span className="text-xs text-gray-700">No Print</span>
-                                  <span className="text-xs">PHP 350.00</span>
-                                </div>
-                                <div className="flex items-center justify-between py-1.5 px-2 bg-gray-50 border border-gray-200 rounded">
-                                  <span className="text-xs text-gray-700">Front Print</span>
-                                  <span className="text-xs">PHP 450.00</span>
-                                </div>
-                                <div className="flex items-center justify-between py-1.5 px-2 bg-gray-50 border border-gray-200 rounded">
-                                  <span className="text-xs text-gray-700">Back Print</span>
-                                  <span className="text-xs">PHP 500.00</span>
-                                </div>
+                              {/* Collapsible Pricing Section */}
+                              <div className="pt-2 border-t border-gray-100">
+                                <button
+                                  onClick={() => {
+                                    setExpandedPricingIds(prev => {
+                                      const newSet = new Set(prev);
+                                      if (isPricingExpanded) {
+                                        newSet.delete(product.id);
+                                      } else {
+                                        newSet.add(product.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                  className="w-full flex items-center justify-between py-2 px-2 hover:bg-gray-50 rounded transition-colors"
+                                >
+                                  <span className="text-xs font-medium text-gray-700">Pricing Options</span>
+                                  <ChevronDown className={`size-4 text-gray-500 transition-transform ${isPricingExpanded ? 'rotate-180' : ''}`} />
+                                </button>
+                                
+                                {isPricingExpanded && (
+                                  <div className="space-y-2 mt-2">
+                                    <div className="flex items-center justify-between py-1.5 px-2 bg-gray-50 border border-gray-200 rounded">
+                                      <span className="text-xs text-gray-700">No Print</span>
+                                      <span className="text-xs font-medium">₱{noPrintPrice.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between py-1.5 px-2 bg-gray-50 border border-gray-200 rounded">
+                                      <span className="text-xs text-gray-700">Front Print</span>
+                                      <span className="text-xs font-medium">₱{frontPrintPrice.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between py-1.5 px-2 bg-gray-50 border border-gray-200 rounded">
+                                      <span className="text-xs text-gray-700">Back Print</span>
+                                      <span className="text-xs font-medium">₱{backPrintPrice.toFixed(2)}</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
 
                               <div className="flex items-center justify-between gap-2 pt-2">
