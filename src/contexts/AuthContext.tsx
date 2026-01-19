@@ -15,6 +15,7 @@ interface AuthContextType {
   isLoggedIn: boolean;
   user: User | null;
   isAdmin: boolean;
+  isHydrating: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User; isAdmin?: boolean }>;
   signup: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   logout: () => Promise<void>;
@@ -34,6 +35,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || '';
 export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [isHydrating, setIsHydrating] = useState(true);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User; isAdmin?: boolean }> => {
     try {
@@ -107,10 +109,29 @@ export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) 
   useEffect(() => {
     const hydrate = async () => {
       try {
-        const res = await fetch(`${API_BASE}/auth/me`, {
+        setIsHydrating(true);
+        // Try to get current user
+        let res = await fetch(`${API_BASE}/auth/me`, {
           method: 'GET',
           credentials: 'include',
         });
+        
+        // If access token expired, try to refresh
+        if (!res.ok && res.status === 401) {
+          const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          
+          if (refreshRes.ok) {
+            // Retry /auth/me after refresh
+            res = await fetch(`${API_BASE}/auth/me`, {
+              method: 'GET',
+              credentials: 'include',
+            });
+          }
+        }
+        
         if (res.ok) {
           const data = await res.json();
           if (data?.user) {
@@ -121,14 +142,14 @@ export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) 
       } catch {
         // ignore hydration errors
       } finally {
-        // hydration complete
+        setIsHydrating(false);
       }
     };
     hydrate();
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, user, isAdmin: user?.role === 'admin', login, signup, logout, requireAuth, openLoginModal }}>
+    <AuthContext.Provider value={{ isLoggedIn, user, isAdmin: user?.role === 'admin', isHydrating, login, signup, logout, requireAuth, openLoginModal }}>
       {children}
     </AuthContext.Provider>
   );

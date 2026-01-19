@@ -32,6 +32,8 @@ model User {
   googleId       String?        @unique
   profilePicture String?
   RefreshToken   RefreshToken[]
+  UserCart       UserCart[]
+  UserFavorite   UserFavorite[]
 }
 
 model Users {
@@ -243,6 +245,7 @@ model orders {
   customer_phone                       String?           @db.VarChar(20)
   customer_address                     String?           @db.Text
   total_amount                         Decimal           @db.Decimal(10, 2)
+  balance_remaining                    Decimal?          @db.Decimal(10, 2)
   payment_id                           Int?
   status                               orders_status?    @default(payment_pending)
   order_date                           DateTime?         @default(now()) @db.Timestamp(0)
@@ -251,6 +254,7 @@ model orders {
   created_at                           DateTime?         @default(now()) @db.Timestamp(0)
   updated_at                           DateTime?         @default(now()) @db.Timestamp(0)
   order_items                          order_items[]
+  tracking_events                      tracking_events[]
   customer_accounts                    customer_accounts @relation(fields: [customer_id], references: [CustomerId], onDelete: NoAction, onUpdate: NoAction, map: "orders_ibfk_1")
   payments_orders_payment_idTopayments payments?         @relation("orders_payment_idTopayments", fields: [payment_id], references: [payment_id], onDelete: NoAction, onUpdate: NoAction, map: "orders_ibfk_2")
   payments_payments_order_idToorders   payments[]        @relation("payments_order_idToorders")
@@ -265,12 +269,11 @@ model payments {
   payment_id                         Int                      @id @default(autoincrement())
   order_id                           Int
   payment_method                     payments_payment_method
+  payment_type                       payments_payment_type?   @default(full)
   payment_status                     payments_payment_status? @default(pending)
   amount                             Decimal                  @db.Decimal(10, 2)
-  paymongo_payment_id                String?                  @db.VarChar(255)
-  paymongo_payment_intent_id         String?                  @db.VarChar(255)
-  paymongo_link_url                  String?                  @db.VarChar(500)
-  paymongo_link_id                   String?                  @db.VarChar(255)
+  amount_paid                        Decimal?                 @db.Decimal(10, 2)
+  remaining_balance                  Decimal?                 @db.Decimal(10, 2)
   payment_proof_url                  String?                  @db.VarChar(500)
   cloudinary_public_id               String?                  @db.VarChar(255)
   reference_number                   String?                  @db.VarChar(100)
@@ -286,7 +289,6 @@ model payments {
   @@index([created_at], map: "idx_created_at")
   @@index([payment_method], map: "idx_method")
   @@index([order_id], map: "idx_order_id")
-  @@index([paymongo_payment_id], map: "idx_paymongo_payment_id")
   @@index([payment_status], map: "idx_status")
   @@index([verified_by], map: "verified_by")
 }
@@ -306,10 +308,10 @@ model product_images {
 }
 
 enum payments_payment_method {
-  paymongo
   gcash
   bank_transfer
   cod
+  card
 }
 
 enum payments_payment_status {
@@ -317,6 +319,11 @@ enum payments_payment_status {
   paid
   failed
   refunded
+}
+
+enum payments_payment_type {
+  partial
+  full
 }
 
 enum customizable_product_images_image_type {
@@ -360,10 +367,12 @@ enum orders_status {
   designing
   ripping
   heatpress
-  cutting
   assembly
-  qc
+  qa
+  packing
   done
+  shipping
+  delivered
   cancelled
 }
 
@@ -434,3 +443,50 @@ model canvas_patterns {
 
   @@index([created_at], map: "idx_patterns_created")
 }
+
+model UserCart {
+  id          String   @id @default(uuid())
+  userId      String
+  productId   String   @db.VarChar(255)
+  productName String   @db.VarChar(255)
+  price       Decimal  @db.Decimal(10, 2)
+  image       String?  @db.VarChar(500)
+  category    String?  @db.VarChar(100)
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+model tracking_events {
+  id        Int       @id @default(autoincrement())
+  order_id  Int
+  status    String    @db.VarChar(100)
+  message   String    @db.Text
+  location  String?   @db.VarChar(255)
+  timestamp DateTime  @default(now()) @db.Timestamp(0)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  orders    orders    @relation(fields: [order_id], references: [order_id], onDelete: Cascade, map: "tracking_events_ibfk_1")
+
+  @@index([order_id], map: "idx_order_id")
+  @@index([timestamp], map: "idx_timestamp")
+}
+
+model UserFavorite {
+  id          String   @id @default(uuid())
+  userId      String
+  productId   String   @db.VarChar(255)
+  productName String   @db.VarChar(255)
+  price       Decimal  @db.Decimal(10, 2)
+  image       String?  @db.VarChar(500)
+  category    String?  @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
