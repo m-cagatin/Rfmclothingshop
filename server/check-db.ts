@@ -48,15 +48,19 @@ async function checkDatabase() {
 
 async function deleteAllProducts() {
   try {
-    console.log('Deleting all product images...');
-    const imageResult = await prisma.customizable_product_images.deleteMany({});
-    console.log(`Deleted ${imageResult.count} image records`);
+    // ⚠️ DANGEROUS: Uncomment only if you really want to delete ALL products!
+    // console.log('Deleting all product images...');
+    // const imageResult = await prisma.customizable_product_images.deleteMany({});
+    // console.log(`Deleted ${imageResult.count} image records`);
     
-    console.log('\nDeleting all products...');
-    const productResult = await prisma.customizable_products.deleteMany({});
-    console.log(`Deleted ${productResult.count} products`);
+    // console.log('\nDeleting all products...');
+    // const productResult = await prisma.customizable_products.deleteMany({});
+    // console.log(`Deleted ${productResult.count} products`);
     
-    console.log('\n✅ All products deleted! Database is clean.');
+    // console.log('\n✅ All products deleted! Database is clean.');
+    
+    console.log('⚠️ Delete function is DISABLED for safety.');
+    console.log('Uncomment the code inside deleteAllProducts() if you really need to delete.');
   } catch (error) {
     console.error('Error:', error);
   } finally {
@@ -64,5 +68,6 @@ async function deleteAllProducts() {
   }
 }
 
+// ⚠️ DISABLED - Uncomment only when you need to delete all products
 // deleteAllProducts();
 checkDatabase();
