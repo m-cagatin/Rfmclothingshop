@@ -19,6 +19,7 @@ import { OrdersPage } from "./pages/admin/OrdersPage";
 import { CustomizableProductsPage } from "./pages/admin/CustomizableProductsPage";
 import { CanvasResourcesPage } from "./pages/admin/CanvasResourcesPage";
 import { EmployeesPage } from "./pages/admin/EmployeesPage";
+import { InventoryPage } from "./pages/admin/InventoryPage";
 import { ReportsPage } from "./pages/admin/ReportsPage";
 import { CashFlowPage } from "./pages/admin/CashFlowPage";
 import { ShippingDetailsPage } from "./pages/ShippingDetailsPage";
@@ -301,6 +302,14 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
               element={
                 <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
                   <EmployeesPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/inventory"
+              element={
+                <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
+                  <InventoryPage />
                 </AdminRoute>
               }
             />

@@ -9,6 +9,7 @@ import {
   Users, 
   FileBarChart,
   DollarSign,
+  Warehouse,
   LogOut,
   ChevronDown
 } from 'lucide-react';
@@ -50,6 +51,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { path: '/admin/customizable-products', icon: Shirt, label: 'Customizable Products' },
     { path: '/admin/canvas-resources', icon: Palette, label: 'Canvas Resources' },
     { path: '/admin/employees', icon: Users, label: 'Employees' },
+    { path: '/admin/inventory', icon: Warehouse, label: 'Inventory' },
     { path: '/admin/cash-flow', icon: DollarSign, label: 'Cash Flow' },
     { path: '/admin/reports', icon: FileBarChart, label: 'Reports' },
   ];

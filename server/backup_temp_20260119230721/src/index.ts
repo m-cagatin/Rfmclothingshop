@@ -11,7 +11,6 @@ import favoritesRoutes from './routes/favorites.routes';
 import paymentsRoutes from './routes/payments.routes';
 import ordersRoutes from './routes/orders.routes';
 import cashflowRoutes from './routes/cashflow.routes';
-import inventoryRoutes from './routes/inventory.routes';
 
 const app = express();
 
@@ -38,7 +37,6 @@ app.use('/api/favorites', favoritesRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/cashflow', cashflowRoutes);
-app.use('/api/inventory', inventoryRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
