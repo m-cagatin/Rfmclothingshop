@@ -9,7 +9,7 @@ const router = express.Router();
  */
 router.post('/save', async (req, res) => {
   try {
-    const { userId, customizableProductId, selectedSize, selectedPrintOption, frontCanvasJson, backCanvasJson } = req.body;
+    const { userId, customizableProductId, selectedSize, selectedPrintOption, printAreaPreset, frontCanvasJson, backCanvasJson } = req.body;
 
     // Validation
     if (!userId || !customizableProductId || !selectedSize || !selectedPrintOption) {
@@ -24,6 +24,7 @@ router.post('/save', async (req, res) => {
       customizableProductId,
       selectedSize,
       selectedPrintOption,
+      printAreaPreset,
       frontCanvasJson,
       backCanvasJson
     });

@@ -5,6 +5,7 @@ export interface SaveDesignData {
   customizableProductId: number;
   selectedSize: string;
   selectedPrintOption: 'none' | 'front' | 'back';
+  printAreaPreset?: string;
   frontCanvasJson: string | null;
   backCanvasJson: string | null;
 }
@@ -15,6 +16,7 @@ export interface LoadDesignData {
   customizableProductId: number;
   selectedSize: string;
   selectedPrintOption: string;
+  printAreaPreset: string;
   frontCanvasJson: string | null;
   backCanvasJson: string | null;
   lastSavedAt: Date;
@@ -27,7 +29,7 @@ export class UserDesignService {
    * Save or update user's current design for a specific product
    */
   static async saveDesign(data: SaveDesignData): Promise<LoadDesignData> {
-    const { userId, customizableProductId, selectedSize, selectedPrintOption, frontCanvasJson, backCanvasJson } = data;
+    const { userId, customizableProductId, selectedSize, selectedPrintOption, printAreaPreset, frontCanvasJson, backCanvasJson } = data;
 
     // Use upsert to either create new or update existing design
     const design = await prisma.user_current_design.upsert({
@@ -40,6 +42,7 @@ export class UserDesignService {
       update: {
         selected_size: selectedSize,
         selected_print_option: selectedPrintOption,
+        print_area_preset: printAreaPreset || 'Letter',
         front_canvas_json: frontCanvasJson,
         back_canvas_json: backCanvasJson,
         last_saved_at: new Date(),
@@ -50,6 +53,7 @@ export class UserDesignService {
         customizable_product_id: customizableProductId,
         selected_size: selectedSize,
         selected_print_option: selectedPrintOption,
+        print_area_preset: printAreaPreset || 'Letter',
         front_canvas_json: frontCanvasJson,
         back_canvas_json: backCanvasJson,
         last_saved_at: new Date(),
@@ -64,6 +68,7 @@ export class UserDesignService {
       customizableProductId: design.customizable_product_id,
       selectedSize: design.selected_size,
       selectedPrintOption: design.selected_print_option,
+      printAreaPreset: design.print_area_preset,
       frontCanvasJson: design.front_canvas_json,
       backCanvasJson: design.back_canvas_json,
       lastSavedAt: design.last_saved_at,
@@ -95,6 +100,7 @@ export class UserDesignService {
       customizableProductId: design.customizable_product_id,
       selectedSize: design.selected_size,
       selectedPrintOption: design.selected_print_option,
+      printAreaPreset: design.print_area_preset,
       frontCanvasJson: design.front_canvas_json,
       backCanvasJson: design.back_canvas_json,
       lastSavedAt: design.last_saved_at,
@@ -141,6 +147,7 @@ export class UserDesignService {
       customizableProductId: design.customizable_product_id,
       selectedSize: design.selected_size,
       selectedPrintOption: design.selected_print_option,
+      printAreaPreset: design.print_area_preset,
       frontCanvasJson: design.front_canvas_json,
       backCanvasJson: design.back_canvas_json,
       lastSavedAt: design.last_saved_at,

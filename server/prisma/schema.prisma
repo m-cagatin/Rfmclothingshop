@@ -20,33 +20,21 @@ model RefreshToken {
 }
 
 model User {
-  id                 String               @id
-  name               String
-  email              String               @unique
-  phone              String?
-  passwordHash       String?
-  role               User_role            @default(customer)
-  emailVerified      Boolean              @default(false)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @default(now())
-  googleId           String?              @unique
-  profilePicture     String?
-  RefreshToken       RefreshToken[]
+  id                  String                @id
+  name                String
+  email               String                @unique
+  phone               String?
+  passwordHash        String?
+  role                User_role             @default(customer)
+  emailVerified       Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @default(now())
+  googleId            String?               @unique
+  profilePicture      String?
+  RefreshToken        RefreshToken[]
   user_current_design user_current_design[]
-  id             String         @id
-  name           String
-  email          String         @unique
-  phone          String?
-  passwordHash   String?
-  role           User_role      @default(customer)
-  emailVerified  Boolean        @default(false)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @default(now())
-  googleId       String?        @unique
-  profilePicture String?
-  RefreshToken   RefreshToken[]
-  UserCart       UserCart[]
-  UserFavorite   UserFavorite[]
+  UserCart            UserCart[]
+  UserFavorite        UserFavorite[]
 }
 
 model Users {
@@ -228,6 +216,7 @@ model user_current_design {
   customizable_product_id  Int
   selected_size            String                @db.VarChar(50)
   selected_print_option    String                @default("none") @db.VarChar(20)
+  print_area_preset        String                @default("Letter") @db.VarChar(50)
   front_canvas_json        String?               @db.Text
   back_canvas_json         String?               @db.Text
   last_saved_at            DateTime              @default(now())

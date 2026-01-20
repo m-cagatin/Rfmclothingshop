@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { toast } from 'sonner';
 import { 
   ArrowLeft,
   ArrowRight,
@@ -31,7 +32,15 @@ import {
   Check,
   Package,
   Undo,
-  Redo
+  Redo,
+  Save,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignVerticalJustifyCenter,
+  AlignHorizontalJustifyCenter,
+  AlignVerticalSpaceAround,
+  AlignHorizontalSpaceAround
 } from 'lucide-react';
 import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
 import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
@@ -142,6 +151,7 @@ export function CustomDesignPage() {
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isClothingPanelOpen, setIsClothingPanelOpen] = useState(false);
+  const [isVariantDetailsPanelOpen, setIsVariantDetailsPanelOpen] = useState(false);
   const [isUploadPanelOpen, setIsUploadPanelOpen] = useState(false);
   const [isTextPanelOpen, setIsTextPanelOpen] = useState(false);
   const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
@@ -174,6 +184,11 @@ export function CustomDesignPage() {
   const [historyStack, setHistoryStack] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyTimeoutRef = useRef<number | null>(null);
+  
+  // Auto-save state
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimeoutRef = useRef<number | null>(null);
+  const localStorageIntervalRef = useRef<number | null>(null);
   
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState('');
@@ -331,23 +346,300 @@ export function CustomDesignPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
+  // Save design to database
+  const handleSave = useCallback(async () => {
+    if (!fabricCanvas.canvasRef || !activeVariant) {
+      console.log('Cannot save: no canvas or active variant');
+      return;
+    }
+
+    try {
+      setSaveStatus('saving');
+      
+      const canvasData = fabricCanvas.canvasRef.toJSON();
+      const view = selectedView;
+      
+      const response = await fetch('/api/design/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          variantId: activeVariant.variantName,
+          view,
+          canvasData,
+          printAreaPreset: printAreaSize,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save design');
+      }
+
+      setSaveStatus('saved');
+      
+      // Reset to idle after 3 seconds
+      setTimeout(() => setSaveStatus('idle'), 3000);
+      
+    } catch (error) {
+      console.error('Save error:', error);
+      setSaveStatus('error');
+      toast.error('Could not save your design. Changes are backed up locally.');
+      
+      // Reset to idle after 5 seconds
+      setTimeout(() => setSaveStatus('idle'), 5000);
+    }
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView]);
+
+  // Trigger auto-save with debounce (2 seconds)
+  const triggerAutoSave = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = window.setTimeout(() => {
+      handleSave();
+    }, 2000);
+  }, [handleSave]);
+
+  // Load saved design from database
+  const loadUserDesign = useCallback(async () => {
+    if (!activeVariant) return;
+
+    try {
+      const response = await fetch(`/api/design/load?variantId=${activeVariant.variantName}`, {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log('No saved design found');
+          return;
+        }
+        throw new Error('Failed to load design');
+      }
+
+      const data = await response.json();
+      const canvasData = selectedView === 'front' ? data.frontCanvasData : data.backCanvasData;
+      
+      // Restore print area preset if saved
+      if (data.printAreaPreset) {
+        setPrintAreaSize(data.printAreaPreset);
+      }
+      
+      if (canvasData && fabricCanvas.canvasRef) {
+        fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
+          fabricCanvas.canvasRef?.renderAll();
+          console.log('Design loaded successfully');
+        });
+      }
+    } catch (error) {
+      console.error('Load error:', error);
+      // Silently fail - user can start fresh design
+    }
+  }, [activeVariant, selectedView, fabricCanvas.canvasRef]);
+
+  // Alignment functions
+  const alignLeft = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to leftmost
+      const objects = (activeObject as any)._objects;
+      const leftmost = Math.min(...objects.map((obj: any) => obj.left - obj.width / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ left: leftmost + obj.width / 2 });
+      });
+    } else {
+      // Single object: align to canvas left
+      activeObject.set({ left: activeObject.width! / 2 });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignCenter = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasCenterX = fabricCanvas.canvasRef.width! / 2;
+    
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to horizontal center
+      const objects = (activeObject as any)._objects;
+      objects.forEach((obj: any) => {
+        obj.set({ left: canvasCenterX });
+      });
+    } else {
+      // Single object: center on canvas
+      activeObject.set({ left: canvasCenterX });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignRight = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasRight = fabricCanvas.canvasRef.width!;
+    
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to rightmost
+      const objects = (activeObject as any)._objects;
+      const rightmost = Math.max(...objects.map((obj: any) => obj.left + obj.width / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ left: canvasRight - (rightmost - obj.left) });
+      });
+    } else {
+      // Single object: align to canvas right
+      activeObject.set({ left: canvasRight - activeObject.width! / 2 });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignTop = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to topmost
+      const objects = (activeObject as any)._objects;
+      const topmost = Math.min(...objects.map((obj: any) => obj.top - obj.height / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ top: topmost + obj.height / 2 });
+      });
+    } else {
+      // Single object: align to canvas top
+      activeObject.set({ top: activeObject.height! / 2 });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignMiddle = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasCenterY = fabricCanvas.canvasRef.height! / 2;
+    
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to vertical middle
+      const objects = (activeObject as any)._objects;
+      objects.forEach((obj: any) => {
+        obj.set({ top: canvasCenterY });
+      });
+    } else {
+      // Single object: center vertically on canvas
+      activeObject.set({ top: canvasCenterY });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignBottom = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasBottom = fabricCanvas.canvasRef.height!;
+    
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to bottommost
+      const objects = (activeObject as any)._objects;
+      const bottommost = Math.max(...objects.map((obj: any) => obj.top + obj.height / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ top: canvasBottom - (bottommost - obj.top) });
+      });
+    } else {
+      // Single object: align to canvas bottom
+      activeObject.set({ top: canvasBottom - activeObject.height! / 2 });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  // Distribution functions
+  const distributeHorizontally = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject || activeObject.type !== 'activeSelection') return;
+
+    const objects = (activeObject as any)._objects;
+    if (objects.length < 3) return; // Need at least 3 objects to distribute
+
+    // Sort by horizontal position
+    const sorted = [...objects].sort((a: any, b: any) => a.left - b.left);
+    const leftmost = sorted[0].left;
+    const rightmost = sorted[sorted.length - 1].left;
+    const totalSpace = rightmost - leftmost;
+    const spacing = totalSpace / (sorted.length - 1);
+
+    sorted.forEach((obj: any, index: number) => {
+      obj.set({ left: leftmost + spacing * index });
+    });
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const distributeVertically = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject || activeObject.type !== 'activeSelection') return;
+
+    const objects = (activeObject as any)._objects;
+    if (objects.length < 3) return; // Need at least 3 objects to distribute
+
+    // Sort by vertical position
+    const sorted = [...objects].sort((a: any, b: any) => a.top - b.top);
+    const topmost = sorted[0].top;
+    const bottommost = sorted[sorted.length - 1].top;
+    const totalSpace = bottommost - topmost;
+    const spacing = totalSpace / (sorted.length - 1);
+
+    sorted.forEach((obj: any, index: number) => {
+      obj.set({ top: topmost + spacing * index });
+    });
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
   // Capture canvas state on changes
   useEffect(() => {
     if (!fabricCanvas.canvasRef) return;
 
     const canvas = fabricCanvas.canvasRef;
-    const handleCanvasChange = () => captureCanvasState();
+    const handleCanvasChange = () => {
+      captureCanvasState();
+      triggerAutoSave(); // Trigger auto-save on canvas changes
+    };
 
     canvas.on('object:added', handleCanvasChange);
     canvas.on('object:modified', handleCanvasChange);
     canvas.on('object:removed', handleCanvasChange);
+    canvas.on('text:changed', handleCanvasChange);
 
     return () => {
       canvas.off('object:added', handleCanvasChange);
       canvas.off('object:modified', handleCanvasChange);
       canvas.off('object:removed', handleCanvasChange);
+      canvas.off('text:changed', handleCanvasChange);
     };
-  }, [fabricCanvas.canvasRef, captureCanvasState]);
+  }, [fabricCanvas.canvasRef, captureCanvasState, triggerAutoSave]);
 
   // Auto-open Properties panel when object selected
   useEffect(() => {
@@ -373,6 +665,53 @@ export function CustomDesignPage() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [handleKeyDown, handleKeyUp]);
+
+  // LocalStorage backup (every 10 seconds)
+  useEffect(() => {
+    if (!fabricCanvas.canvasRef || !activeVariant) return;
+
+    localStorageIntervalRef.current = window.setInterval(() => {
+      const canvasData = fabricCanvas.canvasRef?.toJSON();
+      if (canvasData) {
+        const backupKey = `design_backup_${activeVariant.variantName}_${selectedView}`;
+        localStorage.setItem(backupKey, JSON.stringify(canvasData));
+        console.log('LocalStorage backup saved');
+      }
+    }, 10000); // Every 10 seconds
+
+    return () => {
+      if (localStorageIntervalRef.current) {
+        window.clearInterval(localStorageIntervalRef.current);
+      }
+    };
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView]);
+
+  // Force save on window close/refresh
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Force immediate save
+      if (fabricCanvas.canvasRef && activeVariant && saveStatus !== 'saving') {
+        handleSave();
+      }
+      
+      // Show browser warning (some browsers ignore custom messages)
+      e.preventDefault();
+      e.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [fabricCanvas.canvasRef, activeVariant, handleSave, saveStatus]);
+
+  // Load saved design on mount
+  useEffect(() => {
+    if (activeVariant && fabricCanvas.canvasRef) {
+      loadUserDesign();
+    }
+  }, [activeVariant, loadUserDesign, fabricCanvas.canvasRef]);
   
   // Get category from navigation state
   const selectedCategory = location.state?.category || 'T-Shirt - Round Neck';
@@ -1048,6 +1387,16 @@ export function CustomDesignPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => setIsVariantDetailsPanelOpen(!isVariantDetailsPanelOpen)}
+              disabled={!activeVariant}
+              className={`flex items-center gap-2 ${isVariantDetailsPanelOpen ? 'bg-gray-800 text-white hover:bg-gray-700 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'}`}
+            >
+              <Package className="size-4" />
+              Variant Details
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setIsPropertiesPanelOpen(!isPropertiesPanelOpen);
                 // Close left-side panels when opening Properties
@@ -1106,37 +1455,6 @@ export function CustomDesignPage() {
             </Button>
           </div>
         </div>
-
-        {/* Variant Info Banner */}
-        {activeVariant && (
-          <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded bg-white border border-blue-200 overflow-hidden flex-shrink-0">
-                  <img src={activeVariant.image} alt={activeVariant.productName} className="w-full h-full object-cover" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-gray-900">{activeVariant.productName}</div>
-                  <div className="text-xs text-gray-600">{activeVariant.variantName}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 text-xs">
-                <span className="px-2 py-1 bg-white border border-blue-200 rounded font-medium text-gray-700">
-                  Size: {activeVariant.size}
-                </span>
-                <span className="px-2 py-1 bg-white border border-blue-200 rounded font-medium text-gray-700">
-                  Print: {activeVariant.printOption === 'none' ? 'No Print' : activeVariant.printOption === 'front' ? 'Front Only' : 'Back Only'}
-                </span>
-                <span className="px-2 py-1 bg-blue-600 text-white rounded font-medium">
-                  ₱{activeVariant.totalPrice.toFixed(2)}
-                </span>
-              </div>
-            </div>
-            <div className="text-xs text-gray-600">
-              Click "Clothing Variants" to change product/size/print
-            </div>
-          </div>
-        )}
 
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden relative">
@@ -1230,6 +1548,155 @@ export function CustomDesignPage() {
                         <Label htmlFor="printAreaSize" className="text-sm text-gray-600">Print Area Size</Label>
                         <Select value={printAreaSize} onValueChange={(value: PrintAreaPreset) => setPrintAreaSize(value)}>
                           <SelectTrigger id="printAreaSize" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(PRINT_AREA_PRESETS) as PrintAreaPreset[]).map((preset) => (
+                              <SelectItem key={preset} value={preset}>
+                                {PRINT_AREA_PRESETS[preset].label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Print Size</span>
+                          <span>{PRINT_AREA_PRESETS[printAreaSize].width} × {PRINT_AREA_PRESETS[printAreaSize].height} px</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">DPI</span>
+                          <span>300</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-600">Physical Size</span>
+                          <span>{PRINT_AREA_PRESETS[printAreaSize].physicalSize}</span>
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Variant Details Panel - LEFT SIDE */}
+          {isVariantDetailsPanelOpen && activeVariant && (
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r w-[320px] overflow-y-auto z-20 shadow-lg">
+              <div className="flex flex-col h-full">
+                {/* Header */}
+                <div className="p-4 border-b flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Variant Details</h2>
+                  <Button variant="ghost" size="icon" className="size-8" onClick={() => setIsVariantDetailsPanelOpen(false)}>
+                    <X className="size-4" />
+                  </Button>
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                  {/* Image */}
+                  <div className="space-y-3">
+                    <div className="w-full aspect-square bg-gray-100 rounded-lg border overflow-hidden">
+                      <img 
+                        src={activeVariant.image} 
+                        alt={activeVariant.productName}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Product Name & Variant */}
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">{activeVariant.productName}</h3>
+                    <div className="text-sm text-gray-600">{activeVariant.variantName}</div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Package className="size-4" />
+                      <span>Your Brand Store</span>
+                    </div>
+                  </div>
+
+                  {/* Stock Status */}
+                  <div className="flex items-center gap-2 py-2 px-3 bg-green-50 border border-green-200 rounded-lg">
+                    <Check className="size-4 text-green-600" />
+                    <span className="text-sm text-green-700">In stock</span>
+                  </div>
+
+                  {/* Selected Options */}
+                  <div className="space-y-3 border-t pt-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Size</span>
+                      <span className="font-medium">{activeVariant.size}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Print Option</span>
+                      <span className="font-medium">
+                        {activeVariant.printOption === 'none' ? 'No Print' : 
+                         activeVariant.printOption === 'front' ? 'Front Only' : 'Back Only'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Retail Price</span>
+                      <span className="font-medium">₱{activeVariant.retailPrice.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Production Cost */}
+                  <Collapsible open={isProductionCostOpen} onOpenChange={setIsProductionCostOpen}>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+                        <span className="text-sm font-medium">Total Price: ₱{activeVariant.totalPrice.toFixed(2)}</span>
+                        {isProductionCostOpen ? (
+                          <ChevronUp className="size-4 text-gray-500" />
+                        ) : (
+                          <ChevronDown className="size-4 text-gray-500" />
+                        )}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-4 space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Retail Price</span>
+                          <span>₱{activeVariant.retailPrice.toFixed(2)}</span>
+                        </div>
+                        {activeVariant.printOption === 'front' && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600">Front print</span>
+                            <span>Included</span>
+                          </div>
+                        )}
+                        {activeVariant.printOption === 'back' && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600">Back print</span>
+                            <span>Included</span>
+                          </div>
+                        )}
+                        <div className="pt-2 border-t flex items-center justify-between">
+                          <span className="text-sm font-medium">Total</span>
+                          <span className="text-sm font-medium">₱{activeVariant.totalPrice.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  {/* Print Area Details */}
+                  <Collapsible open={isPrintAreaOpen} onOpenChange={setIsPrintAreaOpen} className="border-t pt-6">
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent mb-4">
+                        <span className="text-sm font-medium">Print area</span>
+                        {isPrintAreaOpen ? (
+                          <ChevronUp className="size-4 text-gray-500" />
+                        ) : (
+                          <ChevronDown className="size-4 text-gray-500" />
+                        )}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-4">
+                      {/* Print Area Size Selector */}
+                      <div className="space-y-2">
+                        <Label htmlFor="variantPrintAreaSize" className="text-sm text-gray-600">Print Area Size</Label>
+                        <Select value={printAreaSize} onValueChange={(value: PrintAreaPreset) => setPrintAreaSize(value)}>
+                          <SelectTrigger id="variantPrintAreaSize" className="w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2233,6 +2700,137 @@ export function CustomDesignPage() {
               title="Redo (Ctrl+Y)"
             >
               <Redo className="size-4" />
+            </Button>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Save Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3"
+              onClick={handleSave}
+              disabled={!activeVariant || saveStatus === 'saving'}
+              title="Save Design"
+            >
+              <Save className="size-4 mr-1.5" />
+              Save
+            </Button>
+            
+            {/* Save Status Indicator */}
+            {saveStatus !== 'idle' && (
+              <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
+                saveStatus === 'saving' ? 'bg-blue-50 text-blue-700' :
+                saveStatus === 'saved' ? 'bg-green-50 text-green-700' :
+                'bg-red-50 text-red-700'
+              }`}>
+                {saveStatus === 'saving' && (
+                  <>
+                    <div className="size-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Saving...</span>
+                  </>
+                )}
+                {saveStatus === 'saved' && (
+                  <>
+                    <Check className="size-3" />
+                    <span>Saved</span>
+                  </>
+                )}
+                {saveStatus === 'error' && (
+                  <>
+                    <AlertCircle className="size-3" />
+                    <span>Failed</span>
+                  </>
+                )}
+              </div>
+            )}
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Alignment Tools */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignLeft}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Left"
+            >
+              <AlignLeft className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignCenter}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Center"
+            >
+              <AlignCenter className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignRight}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Right"
+            >
+              <AlignRight className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignTop}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Top"
+            >
+              <AlignVerticalJustifyCenter className="size-4" style={{ transform: 'rotate(90deg)' }} />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignMiddle}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Middle"
+            >
+              <AlignVerticalJustifyCenter className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignBottom}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Bottom"
+            >
+              <AlignVerticalJustifyCenter className="size-4" style={{ transform: 'rotate(-90deg)' }} />
+            </Button>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Distribution Tools */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={distributeHorizontally}
+              disabled={!fabricCanvas.selectedObject || fabricCanvas.canvasRef?.getActiveObject()?.type !== 'activeSelection'}
+              title="Distribute Horizontally"
+            >
+              <AlignHorizontalSpaceAround className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={distributeVertically}
+              disabled={!fabricCanvas.selectedObject || fabricCanvas.canvasRef?.getActiveObject()?.type !== 'activeSelection'}
+              title="Distribute Vertically"
+            >
+              <AlignVerticalSpaceAround className="size-4" />
             </Button>
             
             <div className="w-px h-6 bg-gray-300 mx-1"></div>
