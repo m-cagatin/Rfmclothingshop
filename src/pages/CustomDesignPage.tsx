@@ -149,7 +149,6 @@ export function CustomDesignPage() {
   const [printAreaSize, setPrintAreaSize] = useState<PrintAreaPreset>('Letter');
   const [activeTab, setActiveTab] = useState('edit');
   const [activeTool, setActiveTool] = useState<string | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isClothingPanelOpen, setIsClothingPanelOpen] = useState(false);
   const [isVariantDetailsPanelOpen, setIsVariantDetailsPanelOpen] = useState(false);
   const [isUploadPanelOpen, setIsUploadPanelOpen] = useState(false);
@@ -158,8 +157,6 @@ export function CustomDesignPage() {
   const [isGraphicsPanelOpen, setIsGraphicsPanelOpen] = useState(false);
   const [isPatternsPanelOpen, setIsPatternsPanelOpen] = useState(false);
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
-  const [isProductionCostOpen, setIsProductionCostOpen] = useState(true);
-  const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
   const [expandedLayerIds, setExpandedLayerIds] = useState<Set<any>>(new Set());
   const [expandedPricingIds, setExpandedPricingIds] = useState<Set<string>>(new Set());
   
