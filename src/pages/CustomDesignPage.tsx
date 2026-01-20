@@ -160,6 +160,10 @@ export function CustomDesignPage() {
   const [expandedLayerIds, setExpandedLayerIds] = useState<Set<any>>(new Set());
   const [expandedPricingIds, setExpandedPricingIds] = useState<Set<string>>(new Set());
   
+  // Collapsible states for Variant Details panel
+  const [isProductionCostOpen, setIsProductionCostOpen] = useState(false);
+  const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
+  
   // Active variant tracking (single variant only)
   const [activeVariant, setActiveVariant] = useState<{
     id: string;
@@ -710,6 +714,13 @@ export function CustomDesignPage() {
     }
   }, [activeVariant, loadUserDesign, fabricCanvas.canvasRef]);
   
+  // Auto-open Variant Details panel if no variant selected (on mount)
+  useEffect(() => {
+    if (!activeVariant) {
+      setIsVariantDetailsPanelOpen(true);
+    }
+  }, []); // Run only on mount
+  
   // Get category from navigation state
   const selectedCategory = location.state?.category || 'T-Shirt - Round Neck';
   const selectedProductName = location.state?.productName || '';
@@ -804,8 +815,9 @@ export function CustomDesignPage() {
     
     setActiveVariant(newVariant);
     
-    // 5. Close clothing panel
+    // 5. Close clothing panel and open variant details
     setIsClothingPanelOpen(false);
+    setIsVariantDetailsPanelOpen(true);
   };
 
   // Remove the hardcoded clothingProducts array - now using real data from above
@@ -1359,9 +1371,6 @@ export function CustomDesignPage() {
         {/* Top Navigation Bar */}
         <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="size-8" onClick={() => setIsPanelOpen(!isPanelOpen)}>
-              <Info className="size-4" />
-            </Button>
             <Button 
               variant="outline" 
               size="sm" 
@@ -1455,131 +1464,8 @@ export function CustomDesignPage() {
 
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden relative">
-          {/* Product Information Panel - Printify Style - Absolute positioned overlay */}
-          {isPanelOpen && (
-            <div className="absolute left-0 top-0 bottom-0 bg-white border-r w-[320px] overflow-y-auto z-20 shadow-lg">
-              <div className="flex flex-col h-full">
-                {/* Header */}
-                <div className="p-4 border-b flex items-center justify-between">
-                  <h2 className="text-lg">Product details</h2>
-                  <Button variant="ghost" size="icon" className="size-8" onClick={() => setIsPanelOpen(false)}>
-                    <X className="size-4" />
-                  </Button>
-                </div>
-
-                {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                  {/* Product Image and Name */}
-                  <div className="space-y-3">
-                    <div className="w-full aspect-square bg-gray-100 rounded-lg border overflow-hidden">
-                      <img 
-                        src={categoryImages[selectedCategory]?.front} 
-                        alt={productName}
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div>
-                      <h3 className="mb-1">{productName || 'Product Name'}</h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Package className="size-4" />
-                        <span>Your Brand Store</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Stock Status */}
-                  <div className="flex items-center gap-2 py-2 px-3 bg-green-50 border border-green-200 rounded-lg">
-                    <Check className="size-4 text-green-600" />
-                    <span className="text-sm text-green-700">In stock</span>
-                  </div>
-
-                  {/* Production Cost */}
-                  <Collapsible open={isProductionCostOpen} onOpenChange={setIsProductionCostOpen}>
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
-                        <span className="text-sm">Production cost: PHP 800.00</span>
-                        {isProductionCostOpen ? (
-                          <ChevronUp className="size-4 text-gray-500" />
-                        ) : (
-                          <ChevronDown className="size-4 text-gray-500" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-4 space-y-3">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Blank product</span>
-                          <span>PHP 350.00</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Front print</span>
-                          <span>PHP 225.00</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Back print</span>
-                          <span>PHP 225.00</span>
-                        </div>
-                        <div className="pt-2 border-t flex items-center justify-between">
-                          <span className="text-sm">Subtotal</span>
-                          <span className="text-sm">PHP 800.00</span>
-                        </div>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-
-                  {/* Print Area Details */}
-                  <Collapsible open={isPrintAreaOpen} onOpenChange={setIsPrintAreaOpen} className="border-t pt-6">
-                    <CollapsibleTrigger asChild>
-                      <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent mb-4">
-                        <span className="text-sm">Print area</span>
-                        {isPrintAreaOpen ? (
-                          <ChevronUp className="size-4 text-gray-500" />
-                        ) : (
-                          <ChevronDown className="size-4 text-gray-500" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-4">
-                      {/* Print Area Size Selector */}
-                      <div className="space-y-2">
-                        <Label htmlFor="printAreaSize" className="text-sm text-gray-600">Print Area Size</Label>
-                        <Select value={printAreaSize} onValueChange={(value: PrintAreaPreset) => setPrintAreaSize(value)}>
-                          <SelectTrigger id="printAreaSize" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(Object.keys(PRINT_AREA_PRESETS) as PrintAreaPreset[]).map((preset) => (
-                              <SelectItem key={preset} value={preset}>
-                                {PRINT_AREA_PRESETS[preset].label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-600">Print Size</span>
-                          <span>{PRINT_AREA_PRESETS[printAreaSize].width} × {PRINT_AREA_PRESETS[printAreaSize].height} px</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-600">DPI</span>
-                          <span>300</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-600">Physical Size</span>
-                          <span>{PRINT_AREA_PRESETS[printAreaSize].physicalSize}</span>
-                        </div>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Variant Details Panel - LEFT SIDE */}
-          {isVariantDetailsPanelOpen && activeVariant && (
+          {isVariantDetailsPanelOpen && (
             <div className="absolute left-0 top-0 bottom-0 bg-white border-r w-[320px] overflow-y-auto z-20 shadow-lg">
               <div className="flex flex-col h-full">
                 {/* Header */}
@@ -1591,7 +1477,30 @@ export function CustomDesignPage() {
                 </div>
 
                 {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                <div className="flex-1 overflow-y-auto p-4">
+                  {!activeVariant ? (
+                    /* Empty State - No Variant Selected */
+                    <div className="flex flex-col items-center justify-center h-full space-y-4 text-center px-4">
+                      <Package className="size-16 text-gray-400" />
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-semibold">No Variant Selected</h3>
+                        <p className="text-sm text-gray-600">Choose a product variant to start customizing your design</p>
+                      </div>
+                      <Button 
+                        size="lg"
+                        className="mt-4"
+                        onClick={() => {
+                          setIsVariantDetailsPanelOpen(false);
+                          setIsClothingPanelOpen(true);
+                        }}
+                      >
+                        <Package className="size-4 mr-2" />
+                        Select Product Variant
+                      </Button>
+                    </div>
+                  ) : (
+                    /* Filled State - Variant Selected */
+                    <div className="space-y-6">
                   {/* Image */}
                   <div className="space-y-3">
                     <div className="w-full aspect-square bg-gray-100 rounded-lg border overflow-hidden">
@@ -1722,6 +1631,8 @@ export function CustomDesignPage() {
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
