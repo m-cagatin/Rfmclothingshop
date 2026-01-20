@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -29,7 +29,9 @@ import {
   Upload,
   Grid3x3,
   Check,
-  Package
+  Package,
+  Undo,
+  Redo
 } from 'lucide-react';
 import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
 import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
@@ -151,7 +153,7 @@ export function CustomDesignPage() {
   const [expandedLayerIds, setExpandedLayerIds] = useState<Set<any>>(new Set());
   const [expandedPricingIds, setExpandedPricingIds] = useState<Set<string>>(new Set());
   
-  // NEW: Active variant tracking
+  // Active variant tracking (single variant only)
   const [activeVariant, setActiveVariant] = useState<{
     id: string;
     productId: string;
@@ -164,27 +166,15 @@ export function CustomDesignPage() {
     totalPrice: number;
   } | null>(null);
 
-  // NEW: Track all added variants (for future multi-variant support)
-  const [addedVariants, setAddedVariants] = useState<Array<{
-    id: string;
-    productId: string;
-    productName: string;
-    variantName: string;
-    size: string;
-    printOption: 'none' | 'front' | 'back';
-    image: string;
-    retailPrice: number;
-    totalPrice: number;
-  }>>([]);
-
-  // NEW: Expanded variant IDs in layers panel
-  const [expandedVariantIds, setExpandedVariantIds] = useState<Set<string>>(new Set());
+  // Track size and print selections for current product
+  const [selectedSize, setSelectedSize] = useState<string>('');
+  const [selectedPrintOption, setSelectedPrintOption] = useState<'none' | 'front' | 'back'>('none');
   
-  // NEW: Track size and print selections per product
-  const [selectedSizePerProduct, setSelectedSizePerProduct] = useState<Record<string, string>>({});
-  const [selectedPrintPerProduct, setSelectedPrintPerProduct] = useState<Record<string, 'none' | 'front' | 'back'>>({});
+  // History management for undo/redo
+  const [historyStack, setHistoryStack] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyTimeoutRef = useRef<number | null>(null);
   
-  const [selectedSize, setSelectedSize] = useState('medium');
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState('');
   const [selectedView, setSelectedView] = useState<ViewSide>('front');
@@ -255,85 +245,109 @@ export function CustomDesignPage() {
     }
   };
 
-  // Phase 5: Variant Management Handlers
-  const handleDeleteVariant = (variantId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent expand/collapse
+  // Undo/Redo Handlers
+  const captureCanvasState = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
     
-    const variant = addedVariants.find(v => v.id === variantId);
-    if (!variant) return;
-    
-    const confirmDelete = window.confirm(
-      `Delete "${variant.productName}" (${variant.variantName} - ${variant.size})?\n\n` +
-      `This will remove the variant from your customization list.`
-    );
-    
-    if (!confirmDelete) return;
-    
-    // Remove from variants list
-    setAddedVariants(prev => prev.filter(v => v.id !== variantId));
-    
-    // Remove from expanded IDs
-    setExpandedVariantIds(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(variantId);
-      return newSet;
-    });
-    
-    // Handle if deleting active variant
-    if (activeVariant?.id === variantId) {
-      const remainingVariants = addedVariants.filter(v => v.id !== variantId);
-      if (remainingVariants.length > 0) {
-        // Set first remaining variant as active
-        setActiveVariant(remainingVariants[0]);
-        setExpandedVariantIds(prev => new Set(prev).add(remainingVariants[0].id));
-      } else {
-        // No variants left
-        setActiveVariant(null);
-      }
-      
-      // Clear canvas when switching/removing active variant
-      if (fabricCanvas.canvasRef) {
-        fabricCanvas.canvasRef.clear();
-        fabricCanvas.canvasRef.renderAll();
-        fabricCanvas.updateCanvasObjects?.();
-      }
+    // Clear existing timeout
+    if (historyTimeoutRef.current) {
+      clearTimeout(historyTimeoutRef.current);
     }
-  };
+    
+    // Debounce: capture state after 300ms of no changes
+    historyTimeoutRef.current = window.setTimeout(() => {
+      const canvasJSON = JSON.stringify(fabricCanvas.canvasRef!.toJSON());
+      
+      setHistoryStack(prev => {
+        // Remove any "future" states if we're in the middle of history
+        const newStack = historyIndex >= 0 ? prev.slice(0, historyIndex + 1) : [];
+        
+        // Add new state
+        newStack.push(canvasJSON);
+        
+        // Limit to 50 states
+        if (newStack.length > 50) {
+          newStack.shift();
+          return newStack;
+        }
+        
+        return newStack;
+      });
+      
+      // Update index to point to latest state
+      setHistoryIndex(prev => {
+        const newIndex = prev + 1;
+        return newIndex > 49 ? 49 : newIndex;
+      });
+    }, 300);
+  }, [fabricCanvas.canvasRef, historyIndex]);
 
-  const handleSwitchActiveVariant = (variant: typeof activeVariant, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent expand/collapse
+  const handleUndo = useCallback(() => {
+    if (historyIndex <= 0 || !fabricCanvas.canvasRef) return;
     
-    if (activeVariant?.id === variant?.id) {
-      // Already active, do nothing
-      return;
+    const newIndex = historyIndex - 1;
+    const prevState = historyStack[newIndex];
+    
+    if (prevState) {
+      fabricCanvas.canvasRef.loadFromJSON(prevState, () => {
+        fabricCanvas.canvasRef!.renderAll();
+        fabricCanvas.updateCanvasObjects?.();
+        setHistoryIndex(newIndex);
+      });
     }
+  }, [historyIndex, historyStack, fabricCanvas]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex >= historyStack.length - 1 || !fabricCanvas.canvasRef) return;
     
-    if (!variant) return;
+    const newIndex = historyIndex + 1;
+    const nextState = historyStack[newIndex];
     
-    const hasObjects = fabricCanvas.canvasObjects.length > 0;
-    
-    if (hasObjects) {
-      const confirmSwitch = window.confirm(
-        `Switch to "${variant.productName}" (${variant.variantName})?\n\n` +
-        `Warning: Current canvas objects will be cleared when switching variants.`
-      );
-      
-      if (!confirmSwitch) return;
+    if (nextState) {
+      fabricCanvas.canvasRef.loadFromJSON(nextState, () => {
+        fabricCanvas.canvasRef!.renderAll();
+        fabricCanvas.updateCanvasObjects?.();
+        setHistoryIndex(newIndex);
+      });
     }
-    
-    // Clear canvas
-    if (fabricCanvas.canvasRef) {
-      fabricCanvas.canvasRef.clear();
-      fabricCanvas.canvasRef.renderAll();
-      fabricCanvas.updateCanvasObjects?.();
-    }
-    
-    // Set new active variant
-    setActiveVariant(variant);
-    
-    // Auto-expand the new active variant
-    setExpandedVariantIds(prev => new Set(prev).add(variant.id));
-  };
+  }, [historyIndex, historyStack, fabricCanvas]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Z or Cmd+Z = Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      // Ctrl+Y or Cmd+Shift+Z = Redo
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
+  // Capture canvas state on changes
+  useEffect(() => {
+    if (!fabricCanvas.canvasRef) return;
+
+    const canvas = fabricCanvas.canvasRef;
+    const handleCanvasChange = () => captureCanvasState();
+
+    canvas.on('object:added', handleCanvasChange);
+    canvas.on('object:modified', handleCanvasChange);
+    canvas.on('object:removed', handleCanvasChange);
+
+    return () => {
+      canvas.off('object:added', handleCanvasChange);
+      canvas.off('object:modified', handleCanvasChange);
+      canvas.off('object:removed', handleCanvasChange);
+    };
+  }, [fabricCanvas.canvasRef, captureCanvasState]);
 
   // Auto-open Properties panel when object selected
   useEffect(() => {
@@ -417,73 +431,45 @@ export function CustomDesignPage() {
   }, [selectedProductName, selectedCategory]);
 
   const handleAddToCustomize = (product: ClothingProduct) => {
-    // Phase 3: Comprehensive variant setup
+    // Simplified for single variant
     
     // 1. Validate size selection
-    const selectedSize = selectedSizePerProduct[product.id];
     if (!selectedSize) {
       alert('⚠️ Please select a size first');
       return;
     }
     
-    // 2. Get print option (defaults to 'none' if not selected)
-    const printOption = selectedPrintPerProduct[product.id] || 'none';
-    
-    // 3. Generate unique variant ID
-    const variantId = `variant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // 4. Calculate total price
+    // 2. Calculate total price
     let totalPrice = product.retailPrice || 350;
     
     // Add print cost
-    if (printOption === 'front') {
+    if (selectedPrintOption === 'front') {
       totalPrice += (product.frontPrintCost || 100);
-    } else if (printOption === 'back') {
+    } else if (selectedPrintOption === 'back') {
       totalPrice += (product.backPrintCost || 100);
     }
     
-    // 5. Determine variant name (use variantName if available, otherwise color)
+    // 3. Determine variant name
     const variantName = product.variantName || product.color || 'Default';
     
-    // 6. Create variant object
+    // 4. Create and set active variant
+    const variantId = `variant-${Date.now()}`;
     const newVariant = {
       id: variantId,
       productId: product.id,
       productName: product.name,
       variantName: variantName,
       size: selectedSize,
-      printOption: printOption,
+      printOption: selectedPrintOption,
       image: product.image,
       retailPrice: product.retailPrice || 350,
       totalPrice: totalPrice
     };
     
-    // 7. Set as active variant
     setActiveVariant(newVariant);
     
-    // 8. Add to variants list
-    setAddedVariants(prev => [...prev, newVariant]);
-    
-    // 9. Auto-expand in layers panel
-    setExpandedVariantIds(prev => new Set(prev).add(variantId));
-    
-    // 10. Switch to layers tab
-    setActiveTab('layers');
-    
-    // 11. Reset selections for this product (ready for next variant)
-    setSelectedSizePerProduct(prev => {
-      const updated = { ...prev };
-      delete updated[product.id];
-      return updated;
-    });
-    setSelectedPrintPerProduct(prev => {
-      const updated = { ...prev };
-      delete updated[product.id];
-      return updated;
-    });
-    
-    // 12. Success notification
-    alert(`✅ ${product.name} added! You can now add designs to the canvas.`);
+    // 5. Close clothing panel
+    setIsClothingPanelOpen(false);
   };
 
   // Remove the hardcoded clothingProducts array - now using real data from above
@@ -1093,8 +1079,15 @@ export function CustomDesignPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate('/custom-design-preview')}
+              onClick={() => navigate('/custom-design-preview', {
+                state: {
+                  activeVariant,
+                  canvasData: fabricCanvas.canvasRef?.toJSON(),
+                  view: selectedView
+                }
+              })}
               className="hover:bg-gray-100 hover:text-gray-900"
+              disabled={!activeVariant}
             >
               Preview
             </Button>
@@ -1113,6 +1106,37 @@ export function CustomDesignPage() {
             </Button>
           </div>
         </div>
+
+        {/* Variant Info Banner */}
+        {activeVariant && (
+          <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded bg-white border border-blue-200 overflow-hidden flex-shrink-0">
+                  <img src={activeVariant.image} alt={activeVariant.productName} className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-gray-900">{activeVariant.productName}</div>
+                  <div className="text-xs text-gray-600">{activeVariant.variantName}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="px-2 py-1 bg-white border border-blue-200 rounded font-medium text-gray-700">
+                  Size: {activeVariant.size}
+                </span>
+                <span className="px-2 py-1 bg-white border border-blue-200 rounded font-medium text-gray-700">
+                  Print: {activeVariant.printOption === 'none' ? 'No Print' : activeVariant.printOption === 'front' ? 'Front Only' : 'Back Only'}
+                </span>
+                <span className="px-2 py-1 bg-blue-600 text-white rounded font-medium">
+                  ₱{activeVariant.totalPrice.toFixed(2)}
+                </span>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600">
+              Click "Clothing Variants" to change product/size/print
+            </div>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden relative">
@@ -1338,19 +1362,16 @@ export function CustomDesignPage() {
                                     </div>
                                   )}
 
-                                  {/* Sizes - Now Interactive */}
+                                  {/* Sizes - Interactive */}
                                   <div className="space-y-1">
                                     <span className="text-xs text-gray-500">Select Size:<span className="text-red-500 ml-1">*</span></span>
                                     <div className="flex flex-wrap gap-1.5">
                                       {product.sizes.map((size) => {
-                                        const isSelected = selectedSizePerProduct[product.id] === size;
+                                        const isSelected = selectedSize === size;
                                         return (
                                           <button
                                             key={size}
-                                            onClick={() => setSelectedSizePerProduct(prev => ({
-                                              ...prev,
-                                              [product.id]: size
-                                            }))}
+                                            onClick={() => setSelectedSize(size)}
                                             className={`px-2 py-0.5 text-xs border rounded transition-all ${
                                               isSelected 
                                                 ? 'bg-gray-800 text-white border-gray-800 font-medium' 
@@ -1364,20 +1385,17 @@ export function CustomDesignPage() {
                                     </div>
                                   </div>
 
-                                  {/* Print Options - New */}
+                                  {/* Print Options */}
                                   <div className="space-y-1">
                                     <span className="text-xs text-gray-500">Print Option:</span>
                                     <div className="flex gap-1.5">
                                       {['none', 'front', 'back'].map((option) => {
-                                        const isSelected = (selectedPrintPerProduct[product.id] || 'none') === option;
+                                        const isSelected = selectedPrintOption === option;
                                         const optionLabel = option.charAt(0).toUpperCase() + option.slice(1);
                                         return (
                                           <button
                                             key={option}
-                                            onClick={() => setSelectedPrintPerProduct(prev => ({
-                                              ...prev,
-                                              [product.id]: option as 'none' | 'front' | 'back'
-                                            }))}
+                                            onClick={() => setSelectedPrintOption(option as 'none' | 'front' | 'back')}
                                             className={`px-3 py-1 text-xs border rounded transition-all ${
                                               isSelected 
                                                 ? 'bg-gray-800 text-white border-gray-800 font-medium' 
@@ -1913,182 +1931,23 @@ export function CustomDesignPage() {
                       <X className="size-5" />
                     </Button>
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="size-2 rounded-full bg-blue-500"></div>
-                      <span className="text-gray-600">{addedVariants.length} {addedVariants.length === 1 ? 'variant' : 'variants'}</span>
-                    </div>
-                    {activeVariant && (
-                      <>
-                        <div className="text-gray-300">•</div>
-                        <div className="flex items-center gap-2">
-                          <div className="size-2 rounded-full bg-green-500"></div>
-                          <span className="text-gray-600">{fabricCanvas.canvasObjects.length} {fabricCanvas.canvasObjects.length === 1 ? 'object' : 'objects'}</span>
-                        </div>
-                      </>
-                    )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="size-2 rounded-full bg-blue-500"></div>
+                    <span className="text-gray-600">{fabricCanvas.canvasObjects.length} {fabricCanvas.canvasObjects.length === 1 ? 'object' : 'objects'}</span>
                   </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4">
-                  {/* Phase 4: Variant-based Layers Structure */}
-                  {addedVariants.length === 0 ? (
+                  {fabricCanvas.canvasObjects.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center px-6">
                       <Layers className="size-16 text-gray-300 mb-4" />
-                      <p className="text-sm text-gray-600 mb-2">No variants added yet</p>
+                      <p className="text-sm text-gray-600 mb-2">No objects yet</p>
                       <p className="text-xs text-gray-500">
-                        Add a clothing variant from "Clothing Variants" panel to start customizing
+                        Add text, images, or graphics to see them listed here
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {addedVariants.map((variant) => {
-                        const isExpanded = expandedVariantIds.has(variant.id);
-                        const isActive = activeVariant?.id === variant.id;
-                        
-                        // Get objects that belong to this variant
-                        // For now, all objects belong to the active variant
-                        // In the future, you can track object-to-variant relationships
-                        const variantObjects = isActive ? fabricCanvas.canvasObjects : [];
-                        const objectCount = variantObjects.length;
-
-                        return (
-                          <div 
-                            key={variant.id}
-                            className={`border-2 rounded-lg overflow-hidden transition-all ${
-                              isActive 
-                                ? 'border-blue-500 shadow-lg' 
-                                : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                          >
-                            {/* Variant Header */}
-                            <div 
-                              className={`p-3 transition-colors ${
-                                isActive 
-                                  ? 'bg-blue-50' 
-                                  : 'bg-white'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                {/* Expand/Collapse Button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedVariantIds(prev => {
-                                      const newSet = new Set(prev);
-                                      if (isExpanded) {
-                                        newSet.delete(variant.id);
-                                      } else {
-                                        newSet.add(variant.id);
-                                      }
-                                      return newSet;
-                                    });
-                                  }}
-                                  className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
-                                  title={isExpanded ? 'Collapse' : 'Expand'}
-                                >
-                                  <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                </button>
-                                
-                                {/* Product Image - Clickable */}
-                                <div 
-                                  onClick={(e) => handleSwitchActiveVariant(variant, e)}
-                                  className={`w-12 h-12 flex-shrink-0 bg-gray-100 rounded overflow-hidden cursor-pointer transition-opacity ${
-                                    isActive ? 'opacity-100' : 'opacity-80 hover:opacity-100'
-                                  }`}
-                                  title={isActive ? 'Active variant' : 'Click to set as active'}
-                                >
-                                  <img 
-                                    src={variant.image} 
-                                    alt={variant.productName}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-
-                                {/* Variant Info - Clickable */}
-                                <div 
-                                  onClick={(e) => handleSwitchActiveVariant(variant, e)}
-                                  className={`flex-1 min-w-0 cursor-pointer ${
-                                    isActive ? '' : 'hover:opacity-75 transition-opacity'
-                                  }`}
-                                  title={isActive ? 'Active variant' : 'Click to set as active'}
-                                >
-                                  <h4 className="text-sm font-medium truncate">{variant.productName}</h4>
-                                  <p className="text-xs text-gray-600 truncate">{variant.variantName}</p>
-                                  
-                                  {/* Badges */}
-                                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                                    {/* Size Badge */}
-                                    <span className="px-1.5 py-0.5 text-[10px] bg-gray-200 text-gray-700 rounded font-medium">
-                                      {variant.size}
-                                    </span>
-                                    
-                                    {/* Print Option Badge */}
-                                    {variant.printOption !== 'none' && (
-                                      <span className="px-1.5 py-0.5 text-[10px] bg-purple-100 text-purple-700 rounded font-medium">
-                                        {variant.printOption === 'front' ? '🖨️ Front' : '🖨️ Back'}
-                                      </span>
-                                    )}
-                                    
-                                    {/* Active Badge */}
-                                    {isActive && (
-                                      <span className="px-1.5 py-0.5 text-[10px] bg-blue-500 text-white rounded font-medium">
-                                        ✓ Active
-                                      </span>
-                                    )}
-                                    
-                                    {/* Object Count Badge */}
-                                    <span className="px-1.5 py-0.5 text-[10px] bg-green-100 text-green-700 rounded font-medium">
-                                      {objectCount} {objectCount === 1 ? 'object' : 'objects'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Price & Actions */}
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  <div className="text-right">
-                                    <p className="text-sm font-semibold text-gray-900">₱{variant.totalPrice.toFixed(2)}</p>
-                                  </div>
-                                  
-                                  {/* Action Buttons */}
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={(e) => handleDeleteVariant(variant.id, e)}
-                                      className="p-1.5 hover:bg-red-100 rounded transition-colors text-red-600 hover:text-red-700"
-                                      title="Delete variant"
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                              
-                              {/* Switch Variant CTA - Only show for inactive variants */}
-                              {!isActive && (
-                                <div className="mt-2 pt-2 border-t border-gray-200">
-                                  <button
-                                    onClick={(e) => handleSwitchActiveVariant(variant, e)}
-                                    className="w-full text-xs text-blue-600 hover:text-blue-700 font-medium py-1 hover:bg-blue-50 rounded transition-colors"
-                                  >
-                                    → Set as Active Variant
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Collapsible Body - Nested Objects */}
-                            {isExpanded && (
-                              <div className="bg-gray-50 border-t border-gray-200">
-                                {objectCount === 0 ? (
-                                  <div className="p-6 text-center">
-                                    <p className="text-xs text-gray-500">No designs added yet</p>
-                                    <p className="text-[10px] text-gray-400 mt-1">
-                                      {isActive ? 'Start adding text, images, or graphics' : 'Select this variant to add designs'}
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <div className="p-2 space-y-2">
-                                    {[...variantObjects].reverse().map((obj, index) => {
+                    <div className="space-y-2">{[...fabricCanvas.canvasObjects].reverse().map((obj, index) => {
                         const isSelected = fabricCanvas.selectedObject === obj;
                         const isExpanded = expandedLayerIds.has(obj);
                         const objectType = obj.type || 'object';
@@ -2249,13 +2108,6 @@ export function CustomDesignPage() {
                           </div>
                         );
                       })}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
                     </div>
                   )}
                 </div>
@@ -2361,6 +2213,30 @@ export function CustomDesignPage() {
         {/* Bottom Action Bar */}
         <div className="bg-white border-t px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            {/* Undo/Redo Buttons */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={handleRedo}
+              disabled={historyIndex >= historyStack.length - 1}
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo className="size-4" />
+            </Button>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
             <Button
               variant="outline"
               size="icon"
