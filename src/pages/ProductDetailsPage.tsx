@@ -10,7 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 
 interface ProductDetailsPageProps {
-  onAddToCart: (id: string) => void;
+  onAddToCart: (id: string, quantity?: number) => void;
   onToggleFavorite: (id: string) => void;
   favorites: Array<{ id: string }>;
 }
@@ -60,174 +60,44 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
         {
           name: 'Classic White',
           images: {
-            front: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?w=800',
-            back: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800',
-            detail: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800',
+            front: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
+            back: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
+            detail: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
           },
           colors: [
             { name: 'White', hex: '#FFFFFF' },
-            { name: 'Off-White', hex: '#F5F5F0' },
+            { name: 'Black', hex: '#1a1a1a' },
+            { name: 'Navy Blue', hex: '#1e3a8a' },
           ],
         },
         {
-          name: 'Classic Black',
+          name: 'Premium Black',
           images: {
-            front: 'https://images.unsplash.com/photo-1618354691373-d851c5c3a990?w=800',
-            back: 'https://images.unsplash.com/photo-1622445275463-afa2ab738c34?w=800',
-            detail: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800',
+            front: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
+            back: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
+            detail: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
           },
           colors: [
-            { name: 'Black', hex: '#000000' },
-            { name: 'Charcoal', hex: '#36454F' },
-          ],
-        },
-        {
-          name: 'Heather Gray',
-          images: {
-            front: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=800',
-            back: 'https://images.unsplash.com/photo-1622445275463-afa2ab738c34?w=800',
-            detail: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=800',
-          },
-          colors: [
-            { name: 'Heather Gray', hex: '#9CA3AF' },
-            { name: 'Light Gray', hex: '#D1D5DB' },
+            { name: 'Black', hex: '#1a1a1a' },
+            { name: 'Charcoal', hex: '#374151' },
           ],
         },
       ],
       sizes: {
-        adult: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
-        kids: ['K6', 'K8', 'K10', 'K12', 'K14', 'K16', 'K19'],
+        adult: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'],
+        kids: ['S', 'M', 'L'],
       },
       pricing: [
         { printType: 'No Print', price: 200 },
-        { printType: 'Front Print Only', price: 350 },
-        { printType: 'Back Print Only', price: 350 },
-        { printType: 'Front + Back Print', price: 480 },
-        { printType: 'Sleeve Print (Additional)', price: 100 },
+        { printType: 'Front Print Only', price: 300 },
+        { printType: 'Back Print Only', price: 300 },
+        { printType: 'Front + Back Print', price: 380 },
       ],
-      printAreas: ['Front', 'Back', 'Left Sleeve', 'Right Sleeve'],
+      printAreas: ['Front', 'Back', 'Sleeves (optional)'],
       minOrder: 10,
-      maxOrder: 1000,
-      turnaroundTime: '5-7 business days',
-      xlSurcharge: 50, // per X for XL+
-    },
-    {
-      id: '2',
-      name: 'Premium Varsity Jacket',
-      category: 'Jacket - Varsity Style',
-      fitType: 'Classic Fit',
-      gender: 'Unisex',
-      fitDescription: 'Slightly oversized for layering, athletic cut',
-      material: 'Wool Blend Body, Genuine Leather Sleeves',
-      weight: '850g (±20g)',
-      description: 'Channel timeless athletic style with our Premium Varsity Jacket. Featuring a luxurious wool blend body and genuine leather sleeves, this jacket combines heritage design with modern quality. Perfect for team uniforms, custom embroidery, or personal style statements.',
-      variants: [
-        {
-          name: 'Royal Blue & White',
-          images: {
-            front: 'https://images.unsplash.com/photo-1761245332312-fddc4f0b5bab?w=800',
-            back: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800',
-            detail: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800',
-          },
-          colors: [
-            { name: 'Royal Blue', hex: '#3B82F6' },
-            { name: 'Navy Blue', hex: '#1E3A8A' },
-          ],
-        },
-        {
-          name: 'Black & Gold',
-          images: {
-            front: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800',
-            back: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800',
-            detail: 'https://images.unsplash.com/photo-1761245332312-fddc4f0b5bab?w=800',
-          },
-          colors: [
-            { name: 'Black', hex: '#000000' },
-            { name: 'Jet Black', hex: '#0A0A0A' },
-          ],
-        },
-      ],
-      sizes: {
-        adult: ['S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
-        kids: [],
-      },
-      pricing: [
-        { printType: 'No Print', price: 600 },
-        { printType: 'Chest Embroidery', price: 750 },
-        { printType: 'Back Embroidery', price: 750 },
-        { printType: 'Chest + Back Embroidery', price: 880 },
-        { printType: 'Sleeve Patch (Additional)', price: 150 },
-      ],
-      printAreas: ['Chest', 'Back', 'Left Sleeve', 'Right Sleeve'],
-      minOrder: 5,
       maxOrder: 500,
-      turnaroundTime: '7-10 business days',
-      xlSurcharge: 50,
-    },
-    {
-      id: '3',
-      name: 'Oversized Premium Hoodie',
-      category: 'Hoodie - Oversized',
-      fitType: 'Oversized Fit',
-      gender: 'Unisex',
-      fitDescription: 'Intentionally oversized, drop shoulder design',
-      material: 'Premium Cotton Fleece (80% Cotton, 20% Polyester)',
-      weight: '420g (±15g)',
-      description: 'Experience ultimate comfort with our Oversized Premium Hoodie. Crafted from a premium cotton-polyester fleece blend, this hoodie offers warmth without weight. The oversized silhouette and drop shoulder design create a modern streetwear aesthetic perfect for custom prints and everyday wear.',
-      variants: [
-        {
-          name: 'Sand Beige',
-          images: {
-            front: 'https://images.unsplash.com/photo-1688111421205-a0a85415b224?w=800',
-            back: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=800',
-            detail: 'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=800',
-          },
-          colors: [
-            { name: 'Sand Beige', hex: '#D4A574' },
-            { name: 'Warm Taupe', hex: '#B8926A' },
-          ],
-        },
-        {
-          name: 'Midnight Black',
-          images: {
-            front: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=800',
-            back: 'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=800',
-            detail: 'https://images.unsplash.com/photo-1688111421205-a0a85415b224?w=800',
-          },
-          colors: [
-            { name: 'Midnight Black', hex: '#000000' },
-            { name: 'Dark Charcoal', hex: '#1F2937' },
-          ],
-        },
-        {
-          name: 'Stone Gray',
-          images: {
-            front: 'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=800',
-            back: 'https://images.unsplash.com/photo-1688111421205-a0a85415b224?w=800',
-            detail: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=800',
-          },
-          colors: [
-            { name: 'Stone Gray', hex: '#6B7280' },
-            { name: 'Ash Gray', hex: '#9CA3AF' },
-          ],
-        },
-      ],
-      sizes: {
-        adult: ['S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
-        kids: [],
-      },
-      pricing: [
-        { printType: 'No Print', price: 450 },
-        { printType: 'Front Print Only', price: 600 },
-        { printType: 'Back Print Only', price: 600 },
-        { printType: 'Front + Back Print', price: 720 },
-        { printType: 'Hood Print (Additional)', price: 120 },
-      ],
-      printAreas: ['Front', 'Back', 'Hood', 'Left Sleeve', 'Right Sleeve'],
-      minOrder: 10,
-      maxOrder: 800,
       turnaroundTime: '5-7 business days',
-      xlSurcharge: 50,
+      xlSurcharge: 20,
     },
   ];
 
@@ -262,9 +132,7 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
     }
 
     requireAuth(() => {
-      for (let i = 0; i < quantity; i++) {
-        onAddToCart(product.id);
-      }
+      onAddToCart(product.id, quantity);
       toast.success(`${quantity} ${quantity > 1 ? 'items' : 'item'} added to cart!`);
     });
   };

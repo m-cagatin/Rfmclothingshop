@@ -7,6 +7,12 @@ import customizableProductsRoutes from './routes/customizableProducts.routes';
 import cloudinaryRoutes from './routes/cloudinary.routes';
 import canvasResourcesRoutes from './routes/canvasResources.routes';
 import userDesignRoutes from './routes/userDesign.routes';
+import cartRoutes from './routes/cart.routes';
+import favoritesRoutes from './routes/favorites.routes';
+import paymentsRoutes from './routes/payments.routes';
+import ordersRoutes from './routes/orders.routes';
+import cashflowRoutes from './routes/cashflow.routes';
+import inventoryRoutes from './routes/inventory.routes';
 
 const app = express();
 
@@ -29,6 +35,12 @@ app.use('/api/customizable-products', customizableProductsRoutes);
 app.use('/api/cloudinary', cloudinaryRoutes);
 app.use('/api/canvas-resources', canvasResourcesRoutes);
 app.use('/api/design', userDesignRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/favorites', favoritesRoutes);
+app.use('/api/payments', paymentsRoutes);
+app.use('/api/orders', ordersRoutes);
+app.use('/api/cashflow', cashflowRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
