@@ -40,7 +40,9 @@ import {
   AlignVerticalJustifyCenter,
   AlignHorizontalJustifyCenter,
   AlignVerticalSpaceAround,
-  AlignHorizontalSpaceAround
+  AlignHorizontalSpaceAround,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
 import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
@@ -149,6 +151,10 @@ export function CustomDesignPage() {
   const [printAreaSize, setPrintAreaSize] = useState<PrintAreaPreset>('Letter');
   const [activeTab, setActiveTab] = useState('edit');
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  
+  // Loading flag to prevent auto-save during design load
+  const isLoadingDesignRef = useRef(false);
+  
   const [isClothingPanelOpen, setIsClothingPanelOpen] = useState(false);
   const [isVariantDetailsPanelOpen, setIsVariantDetailsPanelOpen] = useState(false);
   const [isUploadPanelOpen, setIsUploadPanelOpen] = useState(false);
@@ -164,7 +170,7 @@ export function CustomDesignPage() {
   const [isProductionCostOpen, setIsProductionCostOpen] = useState(false);
   const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
   
-  // Active variant tracking (single variant only)
+  // Active variant tracking (single variant only) - restore from localStorage on mount
   const [activeVariant, setActiveVariant] = useState<{
     id: string;
     productId: string;
@@ -175,7 +181,14 @@ export function CustomDesignPage() {
     image: string;
     retailPrice: number;
     totalPrice: number;
-  } | null>(null);
+  } | null>(() => {
+    try {
+      const saved = localStorage.getItem('activeVariant');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Track size and print selections for current product
   const [selectedSize, setSelectedSize] = useState<string>('');
@@ -186,10 +199,19 @@ export function CustomDesignPage() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyTimeoutRef = useRef<number | null>(null);
   
-  // Auto-save state
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // Unified design status for both save and load
+  const [designStatus, setDesignStatus] = useState<{
+    type: 'idle' | 'loading' | 'loaded' | 'saving' | 'saved' | 'save-error' | 'load-error';
+    message?: string;
+  }>({ type: 'idle' });
+  
   const saveTimeoutRef = useRef<number | null>(null);
   const localStorageIntervalRef = useRef<number | null>(null);
+  
+  // Grid and snap settings
+  const [showGrid, setShowGrid] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [gridSize, setGridSize] = useState(20); // Default 20px grid
   
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState('');
@@ -355,7 +377,7 @@ export function CustomDesignPage() {
     }
 
     try {
-      setSaveStatus('saving');
+      setDesignStatus({ type: 'saving' });
       
       const canvasData = fabricCanvas.canvasRef.toJSON();
       const view = selectedView;
@@ -365,31 +387,32 @@ export function CustomDesignPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          variantId: activeVariant.variantName,
-          view,
-          canvasData,
+          userId: 1, // TODO: Replace with actual user ID from auth
+          customizableProductId: activeVariant.productId,
+          selectedSize: activeVariant.size,
+          selectedPrintOption: activeVariant.printOption,
           printAreaPreset: printAreaSize,
+          frontCanvasJson: view === 'front' ? canvasData : null,
+          backCanvasJson: view === 'back' ? canvasData : null,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save design');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Save failed:', response.status, errorData);
+        throw new Error(`Failed to save design: ${errorData.message || response.statusText}`);
       }
 
-      setSaveStatus('saved');
-      
-      // Reset to idle after 3 seconds
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      setDesignStatus({ type: 'saved' });
       
     } catch (error) {
       console.error('Save error:', error);
-      setSaveStatus('error');
-      toast.error('Could not save your design. Changes are backed up locally.');
-      
-      // Reset to idle after 5 seconds
-      setTimeout(() => setSaveStatus('idle'), 5000);
+      setDesignStatus({ 
+        type: 'save-error',
+        message: error instanceof Error ? error.message : 'Could not save your design. Changes are backed up locally.'
+      });
     }
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView]);
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize]);
 
   // Trigger auto-save with debounce (2 seconds)
   const triggerAutoSave = useCallback(() => {
@@ -404,40 +427,149 @@ export function CustomDesignPage() {
 
   // Load saved design from database
   const loadUserDesign = useCallback(async () => {
-    if (!activeVariant) return;
+    console.log('loadUserDesign called:', { activeVariant, hasCanvas: !!fabricCanvas.canvasRef });
+    
+    if (!activeVariant || !fabricCanvas.canvasRef) return;
+
+    // Set loading flag to prevent auto-save during load
+    isLoadingDesignRef.current = true;
+    setDesignStatus({ type: 'loading' });
 
     try {
-      const response = await fetch(`/api/design/load?variantId=${activeVariant.variantName}`, {
+      const userId = 1; // TODO: Replace with actual user ID from auth
+      const response = await fetch(`/api/design/load/${activeVariant.productId}?userId=${userId}`, {
         credentials: 'include',
       });
 
       if (!response.ok) {
         if (response.status === 404) {
-          console.log('No saved design found');
+          console.log('No saved design found in database, checking localStorage...');
+          
+          // Try to load from localStorage backup
+          const backupKey = `design_backup_${activeVariant.variantName}_${selectedView}`;
+          const backupData = localStorage.getItem(backupKey);
+          
+          if (backupData) {
+            const canvasData = JSON.parse(backupData);
+            fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
+              console.log('JSON loaded, forcing render...');
+              
+              // Force multiple render cycles to ensure visibility
+              fabricCanvas.canvasRef?.renderAll();
+              fabricCanvas.updateCanvasObjects?.();
+              
+              // Use requestAnimationFrame to ensure DOM is ready
+              requestAnimationFrame(() => {
+                fabricCanvas.canvasRef?.requestRenderAll();
+                
+                // Double-check with delayed render
+                setTimeout(() => {
+                  fabricCanvas.canvasRef?.requestRenderAll();
+                  console.log('Design restored from localStorage backup');
+                  setDesignStatus({ type: 'loaded', message: 'Design restored from backup' });
+                }, 100);
+              });
+              
+              setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
+            });
+          } else {
+            // No saved design, just show variant is loaded
+            console.log('No saved design, fresh start');
+            setDesignStatus({ type: 'loaded', message: 'Variant loaded - Ready to design' });
+            isLoadingDesignRef.current = false;
+          }
           return;
         }
         throw new Error('Failed to load design');
       }
 
-      const data = await response.json();
-      const canvasData = selectedView === 'front' ? data.frontCanvasData : data.backCanvasData;
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('Server returned HTML instead of JSON. Is the backend running?');
+        throw new Error('Server error - backend may not be running');
+      }
+      
+      const result = await response.json();
+      const data = result.data;
       
       // Restore print area preset if saved
       if (data.printAreaPreset) {
         setPrintAreaSize(data.printAreaPreset);
       }
       
+      // Load canvas data based on current view
+      const canvasData = selectedView === 'front' ? data.frontCanvasJson : data.backCanvasJson;
+      
       if (canvasData && fabricCanvas.canvasRef) {
         fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
+          console.log('JSON loaded from database, forcing render...');
+          
+          // Force multiple render cycles to ensure visibility
           fabricCanvas.canvasRef?.renderAll();
-          console.log('Design loaded successfully');
+          fabricCanvas.updateCanvasObjects?.();
+          
+          // Use requestAnimationFrame to ensure DOM is ready
+          requestAnimationFrame(() => {
+            fabricCanvas.canvasRef?.requestRenderAll();
+            
+            // Double-check with delayed render
+            setTimeout(() => {
+              fabricCanvas.canvasRef?.requestRenderAll();
+              console.log('Design loaded successfully from database');
+              setDesignStatus({ type: 'loaded', message: 'Design loaded successfully' });
+            }, 100);
+          });
+          
+          setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
         });
+      } else {
+        // No canvas data but variant is loaded
+        console.log('Variant loaded, no design data yet');
+        setDesignStatus({ type: 'loaded', message: 'Variant loaded' });
+        isLoadingDesignRef.current = false;
       }
     } catch (error) {
       console.error('Load error:', error);
-      // Silently fail - user can start fresh design
+      
+      // Try to load from localStorage backup as last resort
+      try {
+        const backupKey = `design_backup_${activeVariant.variantName}_${selectedView}`;
+        const backupData = localStorage.getItem(backupKey);
+        
+        if (backupData) {
+          const canvasData = JSON.parse(backupData);
+          fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
+            console.log('JSON loaded from backup after error, forcing render...');
+            
+            // Force multiple render cycles to ensure visibility
+            fabricCanvas.canvasRef?.renderAll();
+            fabricCanvas.updateCanvasObjects?.();
+            
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+              fabricCanvas.canvasRef?.requestRenderAll();
+              
+              // Double-check with delayed render
+              setTimeout(() => {
+                fabricCanvas.canvasRef?.requestRenderAll();
+                console.log('Design restored from localStorage backup after error');
+                setDesignStatus({ type: 'loaded', message: 'Design restored from backup' });
+              }, 100);
+            });
+            
+            setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
+          });
+        } else {
+          setDesignStatus({ type: 'load-error', message: 'Failed to load design' });
+          isLoadingDesignRef.current = false;
+        }
+      } catch (backupError) {
+        console.error('Failed to restore from backup:', backupError);
+        setDesignStatus({ type: 'load-error' });
+        isLoadingDesignRef.current = false;
+      }
     }
-  }, [activeVariant, selectedView, fabricCanvas.canvasRef]);
+  }, [activeVariant, selectedView, fabricCanvas.canvasRef, setPrintAreaSize]);
 
   // Alignment functions
   const alignLeft = useCallback(() => {
@@ -619,12 +751,196 @@ export function CustomDesignPage() {
     fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
   }, [fabricCanvas.canvasRef]);
 
+  // Group selected objects (Ctrl+G)
+  const groupObjects = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    
+    // Only group if multiple objects are selected
+    if (!activeObject || activeObject.type !== 'activeSelection') {
+      console.log('Select multiple objects to group');
+      return;
+    }
+    
+    const selection = activeObject as any;
+    const objects = selection._objects;
+    
+    if (objects.length < 2) {
+      console.log('Need at least 2 objects to group');
+      return;
+    }
+    
+    // Create a group from the active selection
+    selection.toGroup();
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.updateCanvasObjects?.();
+    
+    // Trigger undo/redo and auto-save
+    const newGroup = fabricCanvas.canvasRef.getActiveObject();
+    if (newGroup) {
+      fabricCanvas.canvasRef.fire('object:modified', { target: newGroup });
+    }
+    
+    console.log(`Grouped ${objects.length} objects`);
+    toast.success('Objects grouped');
+  }, [fabricCanvas.canvasRef]);
+
+  // Ungroup selected group (Ctrl+Shift+G)
+  const ungroupObjects = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    
+    // Only ungroup if a group is selected
+    if (!activeObject || activeObject.type !== 'group') {
+      console.log('Select a group to ungroup');
+      return;
+    }
+    
+    const group = activeObject as any;
+    const items = group._objects.slice(); // Copy array
+    
+    // Ungroup to active selection
+    group.toActiveSelection();
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.updateCanvasObjects?.();
+    
+    // Trigger undo/redo and auto-save
+    const newSelection = fabricCanvas.canvasRef.getActiveObject();
+    if (newSelection) {
+      fabricCanvas.canvasRef.fire('object:modified', { target: newSelection });
+    }
+    
+    console.log(`Ungrouped ${items.length} objects`);
+    toast.success('Group ungrouped');
+  }, [fabricCanvas.canvasRef]);
+
+  // Toggle lock/unlock for objects
+  const toggleLock = useCallback((object: any) => {
+    if (!fabricCanvas.canvasRef) return;
+
+    // Get current lock state from custom properties
+    const isLocked = (object as any).customProps?.locked || false;
+    const newLockState = !isLocked;
+
+    // Update lock state
+    if (!(object as any).customProps) {
+      (object as any).customProps = {};
+    }
+    (object as any).customProps.locked = newLockState;
+
+    // Set Fabric.js properties based on lock state
+    object.set({
+      selectable: !newLockState,
+      evented: !newLockState,
+      hasControls: !newLockState,
+      hasBorders: !newLockState,
+      lockMovementX: newLockState,
+      lockMovementY: newLockState,
+      lockRotation: newLockState,
+      lockScalingX: newLockState,
+      lockScalingY: newLockState,
+    });
+
+    // If we're locking the currently selected object, deselect it
+    if (newLockState && fabricCanvas.canvasRef.getActiveObject() === object) {
+      fabricCanvas.canvasRef.discardActiveObject();
+    }
+
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.updateCanvasObjects?.();
+
+    // Fire object:modified to integrate with undo/redo and auto-save
+    fabricCanvas.canvasRef.fire('object:modified', { target: object });
+
+    toast.success(newLockState ? 'Object locked' : 'Object unlocked');
+  }, [fabricCanvas]);
+
+  // Render grid on canvas
+  const renderGrid = useCallback(() => {
+    if (!fabricCanvas.canvasRef || !showGrid) return;
+
+    const canvas = fabricCanvas.canvasRef;
+    
+    // Remove existing grid lines
+    const existingGrid = canvas.getObjects().filter((obj: any) => obj.id === 'grid-line');
+    existingGrid.forEach((line: any) => canvas.remove(line));
+
+    // Get canvas dimensions
+    const width = canvas.getWidth();
+    const height = canvas.getHeight();
+
+    // Create grid lines
+    const gridLines: any[] = [];
+
+    // Vertical lines
+    for (let x = 0; x <= width; x += gridSize) {
+      const line = new (window as any).fabric.Line([x, 0, x, height], {
+        stroke: '#e0e0e0',
+        strokeWidth: 1,
+        selectable: false,
+        evented: false,
+        id: 'grid-line',
+      });
+      gridLines.push(line);
+    }
+
+    // Horizontal lines
+    for (let y = 0; y <= height; y += gridSize) {
+      const line = new (window as any).fabric.Line([0, y, width, y], {
+        stroke: '#e0e0e0',
+        strokeWidth: 1,
+        selectable: false,
+        evented: false,
+        id: 'grid-line',
+      });
+      gridLines.push(line);
+    }
+
+    // Add all grid lines to canvas
+    gridLines.forEach(line => canvas.add(line));
+    
+    // Send grid lines to back
+    gridLines.forEach(line => (canvas as any).sendObjectToBack(line));
+    
+    canvas.renderAll();
+  }, [fabricCanvas, showGrid, gridSize]);
+
+  // Snap object position to grid
+  const snapToGridPosition = useCallback((value: number) => {
+    return Math.round(value / gridSize) * gridSize;
+  }, [gridSize]);
+
+  // Keyboard shortcuts for group/ungroup
+  useEffect(() => {
+    const handleGroupKeys = (e: KeyboardEvent) => {
+      // Ctrl+G = Group
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && !e.shiftKey) {
+        e.preventDefault();
+        groupObjects();
+      }
+      // Ctrl+Shift+G = Ungroup
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'g') {
+        e.preventDefault();
+        ungroupObjects();
+      }
+    };
+
+    window.addEventListener('keydown', handleGroupKeys);
+    return () => window.removeEventListener('keydown', handleGroupKeys);
+  }, [groupObjects, ungroupObjects]);
+
   // Capture canvas state on changes
   useEffect(() => {
     if (!fabricCanvas.canvasRef) return;
 
     const canvas = fabricCanvas.canvasRef;
     const handleCanvasChange = () => {
+      // Don't trigger auto-save if we're loading a design
+      if (isLoadingDesignRef.current) {
+        console.log('Skipping auto-save during design load');
+        return;
+      }
+      
       captureCanvasState();
       triggerAutoSave(); // Trigger auto-save on canvas changes
     };
@@ -641,6 +957,70 @@ export function CustomDesignPage() {
       canvas.off('text:changed', handleCanvasChange);
     };
   }, [fabricCanvas.canvasRef, captureCanvasState, triggerAutoSave]);
+
+  // Handle grid rendering and snap-to-grid
+  useEffect(() => {
+    if (!fabricCanvas.canvasRef) return undefined;
+
+    const canvas = fabricCanvas.canvasRef;
+
+    if (showGrid) {
+      // Render grid initially
+      renderGrid();
+      
+      // Re-render grid after canvas renders
+      const handleAfterRender = () => {
+        // Check if grid lines still exist, if not, re-add them
+        const gridExists = canvas.getObjects().some((obj: any) => obj.id === 'grid-line');
+        if (!gridExists) {
+          renderGrid();
+        }
+      };
+      
+      canvas.on('after:render', handleAfterRender);
+      
+      return () => {
+        canvas.off('after:render', handleAfterRender);
+        // Remove grid lines when grid is disabled
+        const existingGrid = canvas.getObjects().filter((obj: any) => obj.id === 'grid-line');
+        existingGrid.forEach((line: any) => canvas.remove(line));
+        canvas.renderAll();
+      };
+    } else {
+      // Remove grid lines when showGrid is false
+      const existingGrid = canvas.getObjects().filter((obj: any) => obj.id === 'grid-line');
+      existingGrid.forEach((line: any) => canvas.remove(line));
+      canvas.renderAll();
+      return undefined;
+    }
+  }, [fabricCanvas.canvasRef, showGrid, gridSize, renderGrid]);
+
+  // Handle snap-to-grid during object movement
+  useEffect(() => {
+    if (!fabricCanvas.canvasRef) return;
+
+    const canvas = fabricCanvas.canvasRef;
+
+    const handleObjectMoving = (e: any) => {
+      if (!snapToGrid || !e.target) return;
+
+      const obj = e.target;
+      
+      // Snap position to grid
+      obj.set({
+        left: snapToGridPosition(obj.left || 0),
+        top: snapToGridPosition(obj.top || 0),
+      });
+    };
+
+    if (snapToGrid) {
+      canvas.on('object:moving', handleObjectMoving);
+    }
+
+    return () => {
+      canvas.off('object:moving', handleObjectMoving);
+    };
+  }, [fabricCanvas.canvasRef, snapToGrid, snapToGridPosition]);
 
   // Auto-open Properties panel when object selected
   useEffect(() => {
@@ -690,14 +1070,16 @@ export function CustomDesignPage() {
   // Force save on window close/refresh
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Force immediate save
-      if (fabricCanvas.canvasRef && activeVariant && saveStatus !== 'saving') {
+      // Force immediate save if there's unsaved work
+      if (fabricCanvas.canvasRef && activeVariant && designStatus.type !== 'saving') {
         handleSave();
       }
       
-      // Show browser warning (some browsers ignore custom messages)
-      e.preventDefault();
-      e.returnValue = '';
+      // Only show warning if save is in progress or failed
+      if (designStatus.type === 'saving' || designStatus.type === 'save-error') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -705,21 +1087,70 @@ export function CustomDesignPage() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [fabricCanvas.canvasRef, activeVariant, handleSave, saveStatus]);
+  }, [fabricCanvas.canvasRef, activeVariant, handleSave, designStatus.type]);
 
   // Load saved design on mount
   useEffect(() => {
+    console.log('Load effect triggered:', { 
+      hasVariant: !!activeVariant, 
+      hasCanvas: !!fabricCanvas.canvasRef,
+      productId: activeVariant?.productId,
+      view: selectedView
+    });
+    
     if (activeVariant && fabricCanvas.canvasRef) {
+      console.log('Calling loadUserDesign...');
       loadUserDesign();
+    } else {
+      console.log('Skipped loadUserDesign - missing variant or canvas');
     }
-  }, [activeVariant, loadUserDesign, fabricCanvas.canvasRef]);
+  }, [activeVariant?.productId, selectedView, fabricCanvas.canvasRef, loadUserDesign]); // Include loadUserDesign
   
-  // Auto-open Variant Details panel if no variant selected (on mount)
+  // Centralized toast notification handler - shows messages based on status changes
   useEffect(() => {
-    if (!activeVariant) {
-      setIsVariantDetailsPanelOpen(true);
+    const { type, message } = designStatus;
+    
+    switch (type) {
+      case 'loaded':
+        toast.success(message || 'Design loaded successfully');
+        // Reset to idle after showing message
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 100);
+        break;
+      case 'saved':
+        toast.success('Design saved');
+        // Reset to idle after 3 seconds
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 3000);
+        break;
+      case 'save-error':
+        toast.error(message || 'Could not save your design. Changes are backed up locally.');
+        // Reset to idle after 5 seconds
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 5000);
+        break;
+      case 'load-error':
+        toast.error(message || 'Could not load design');
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 3000);
+        break;
     }
+  }, [designStatus]);
+  
+  // Auto-open Variant Details panel on mount (whether or not there's a variant)
+  useEffect(() => {
+    setIsVariantDetailsPanelOpen(true);
   }, []); // Run only on mount
+  
+  // Auto-open Layers panel on mount
+  useEffect(() => {
+    setActiveTab('layers');
+  }, []); // Run only on mount
+  
+  // Persist activeVariant to localStorage whenever it changes
+  useEffect(() => {
+    if (activeVariant) {
+      localStorage.setItem('activeVariant', JSON.stringify(activeVariant));
+    } else {
+      localStorage.removeItem('activeVariant');
+    }
+  }, [activeVariant]);
   
   // Get category from navigation state
   const selectedCategory = location.state?.category || 'T-Shirt - Round Neck';
@@ -814,6 +1245,9 @@ export function CustomDesignPage() {
     };
     
     setActiveVariant(newVariant);
+    
+    // Save to localStorage for persistence across page refreshes
+    localStorage.setItem('activeVariant', JSON.stringify(newVariant));
     
     // 5. Close clothing panel and open variant details
     setIsClothingPanelOpen(false);
@@ -1394,7 +1828,6 @@ export function CustomDesignPage() {
               variant="outline"
               size="sm"
               onClick={() => setIsVariantDetailsPanelOpen(!isVariantDetailsPanelOpen)}
-              disabled={!activeVariant}
               className={`flex items-center gap-2 ${isVariantDetailsPanelOpen ? 'bg-gray-800 text-white hover:bg-gray-700 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'}`}
             >
               <Package className="size-4" />
@@ -2391,10 +2824,12 @@ export function CustomDesignPage() {
                             key={actualIndex} 
                             className={`border rounded-lg overflow-hidden transition-all ${
                               isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                            }`}
+                            } ${(obj as any).customProps?.locked ? 'opacity-60 bg-gray-50' : ''}`}
                           >
                             {/* Compact Header */}
-                            <div className="flex items-center gap-2 p-2.5 bg-white hover:bg-gray-50 transition-colors">
+                            <div className={`flex items-center gap-2 p-2.5 transition-colors ${
+                              (obj as any).customProps?.locked ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'
+                            }`}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -2425,6 +2860,23 @@ export function CustomDesignPage() {
                                   <h4 className="text-xs font-medium truncate">{getObjectLabel()}</h4>
                                 </div>
                               </div>
+                              
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleLock(obj);
+                                }}
+                                className={`p-1 hover:bg-gray-200 rounded transition-colors ${
+                                  (obj as any).customProps?.locked ? 'text-red-600' : 'text-gray-400'
+                                }`}
+                                title={(obj as any).customProps?.locked ? 'Unlock object' : 'Lock object'}
+                              >
+                                {(obj as any).customProps?.locked ? (
+                                  <Lock className="h-4 w-4" />
+                                ) : (
+                                  <Unlock className="h-4 w-4" />
+                                )}
+                              </button>
                               
                               <div className={`text-[10px] px-1.5 py-0.5 rounded ${
                                 isSelected ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
@@ -2618,7 +3070,7 @@ export function CustomDesignPage() {
               size="sm"
               className="h-8 px-3"
               onClick={handleSave}
-              disabled={!activeVariant || saveStatus === 'saving'}
+              disabled={!activeVariant || designStatus.type === 'saving'}
               title="Save Design"
             >
               <Save className="size-4 mr-1.5" />
@@ -2626,25 +3078,25 @@ export function CustomDesignPage() {
             </Button>
             
             {/* Save Status Indicator */}
-            {saveStatus !== 'idle' && (
+            {(designStatus.type === 'saving' || designStatus.type === 'saved' || designStatus.type === 'save-error') && (
               <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
-                saveStatus === 'saving' ? 'bg-blue-50 text-blue-700' :
-                saveStatus === 'saved' ? 'bg-green-50 text-green-700' :
+                designStatus.type === 'saving' ? 'bg-blue-50 text-blue-700' :
+                designStatus.type === 'saved' ? 'bg-green-50 text-green-700' :
                 'bg-red-50 text-red-700'
               }`}>
-                {saveStatus === 'saving' && (
+                {designStatus.type === 'saving' && (
                   <>
                     <div className="size-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin"></div>
                     <span>Saving...</span>
                   </>
                 )}
-                {saveStatus === 'saved' && (
+                {designStatus.type === 'saved' && (
                   <>
                     <Check className="size-3" />
                     <span>Saved</span>
                   </>
                 )}
-                {saveStatus === 'error' && (
+                {designStatus.type === 'save-error' && (
                   <>
                     <AlertCircle className="size-3" />
                     <span>Failed</span>
@@ -2740,6 +3192,39 @@ export function CustomDesignPage() {
             >
               <AlignVerticalSpaceAround className="size-4" />
             </Button>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Grid & Snap Tools */}
+            <Button
+              variant={showGrid ? "default" : "outline"}
+              size="icon"
+              className="size-8"
+              onClick={() => setShowGrid(!showGrid)}
+              title="Toggle Grid"
+            >
+              <Grid3x3 className="size-4" />
+            </Button>
+            <Button
+              variant={snapToGrid ? "default" : "outline"}
+              size="icon"
+              className="size-8"
+              onClick={() => setSnapToGrid(!snapToGrid)}
+              disabled={!showGrid}
+              title="Snap to Grid"
+            >
+              <Maximize className="size-4" />
+            </Button>
+            <Select value={gridSize.toString()} onValueChange={(value) => setGridSize(Number(value))}>
+              <SelectTrigger className="h-8 w-[70px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10px</SelectItem>
+                <SelectItem value="20">20px</SelectItem>
+                <SelectItem value="50">50px</SelectItem>
+              </SelectContent>
+            </Select>
             
             <div className="w-px h-6 bg-gray-300 mx-1"></div>
             
