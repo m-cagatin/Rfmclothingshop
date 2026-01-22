@@ -42,7 +42,8 @@ import {
   AlignVerticalSpaceAround,
   AlignHorizontalSpaceAround,
   Lock,
-  Unlock
+  Unlock,
+  Eye
 } from 'lucide-react';
 import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
 import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
@@ -55,6 +56,7 @@ import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
 import { PropertiesPanel } from '../components/customizer/PropertiesPanel';
 import { AlertCircle } from 'lucide-react';
 import { PRINT_AREA_PRESETS, PrintAreaPreset, DEFAULT_ZOOM } from '../utils/fabricHelpers';
+import { exportCanvasToDataURL, getPrintAreaBounds } from '../utils/canvasExport';
 import '../styles/canvasEditor.css';
 
 type ViewSide = 'front' | 'back';
@@ -413,6 +415,51 @@ export function CustomDesignPage() {
       });
     }
   }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize]);
+
+  // Navigate to preview page with design data
+  const handlePreview = useCallback(async () => {
+    if (!fabricCanvas.canvasRef || !activeVariant) {
+      toast.error('Please select a product variant first');
+      return;
+    }
+
+    try {
+      // Save design first to ensure it's persisted
+      await handleSave();
+
+      // Get canvas JSON data
+      const canvasData = JSON.stringify(fabricCanvas.canvasRef.toJSON());
+      
+      // Export design as image (print area only)
+      const printArea = PRINT_AREA_PRESETS[printAreaSize];
+      const printAreaBounds = getPrintAreaBounds(fabricCanvas.canvasRef, {
+        width: printArea.width,
+        height: printArea.height,
+      });
+      
+      const previewImage = exportCanvasToDataURL(fabricCanvas.canvasRef, {
+        format: 'png',
+        quality: 1,
+        multiplier: 2,
+        ...printAreaBounds,
+      });
+
+      // Navigate to preview page with state
+      navigate('/preview-design', {
+        state: {
+          designData: canvasData,
+          variant: activeVariant,
+          view: selectedView,
+          printAreaSize,
+          previewImage,
+          timestamp: Date.now(),
+        },
+      });
+    } catch (error) {
+      console.error('Preview error:', error);
+      toast.error('Failed to generate preview. Please try again.');
+    }
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, handleSave, navigate]);
 
   // Trigger auto-save with debounce (2 seconds)
   const triggerAutoSave = useCallback(() => {
@@ -3075,6 +3122,19 @@ export function CustomDesignPage() {
             >
               <Save className="size-4 mr-1.5" />
               Save
+            </Button>
+            
+            {/* Preview Button */}
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 px-3 bg-blue-600 hover:bg-blue-700"
+              onClick={handlePreview}
+              disabled={!activeVariant}
+              title="Preview Design"
+            >
+              <Eye className="size-4 mr-1.5" />
+              Preview
             </Button>
             
             {/* Save Status Indicator */}
