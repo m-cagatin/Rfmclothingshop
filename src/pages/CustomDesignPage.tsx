@@ -134,6 +134,14 @@ export function CustomDesignPage() {
   const { user, isHydrating } = useAuth();
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   
+  // Redirect to home if user is not authenticated (after hydration completes)
+  useEffect(() => {
+    if (!isHydrating && !user) {
+      toast.error('Please log in to use the design editor');
+      navigate('/', { replace: true });
+    }
+  }, [user, isHydrating, navigate]);
+  
   // Canvas zoom/pan hook (Phase 2)
   const {
     canvasScale,
@@ -621,18 +629,29 @@ export function CustomDesignPage() {
     isLoadingDesignRef.current = true;
     setDesignStatus({ type: 'loading' });
 
+    // Add 5 second timeout - if backend doesn't respond, fail gracefully
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
       const userId = user?.id ? parseInt(user.id) : null;
       if (!userId) {
         console.error('loadUserDesign: No authenticated user');
-        setDesignStatus({ type: 'load-error', message: 'Please log in to load designs' });
+        // Clear canvas for fresh start
+        fabricCanvas.canvasRef.clear();
+        fabricCanvas.canvasRef.backgroundColor = 'transparent';
+        fabricCanvas.canvasRef.renderAll();
+        setDesignStatus({ type: 'loaded', message: 'Ready to design' });
         isLoadingDesignRef.current = false;
         return;
       }
       
       const response = await fetch(`/api/design/load/${activeVariant.productId}?userId=${userId}`, {
         credentials: 'include',
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -733,44 +752,25 @@ export function CustomDesignPage() {
         isLoadingDesignRef.current = false;
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Load error:', error);
       
-      // Try to load from localStorage backup as last resort
-      try {
-        const backupKey = `design_backup_${activeVariant.variantName}_${selectedView}`;
-        const backupData = localStorage.getItem(backupKey);
-        
-        if (backupData) {
-          const canvasData = JSON.parse(backupData);
-          fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
-            console.log('JSON loaded from backup after error, forcing render...');
-            
-            // Force multiple render cycles to ensure visibility
-            fabricCanvas.canvasRef?.renderAll();
-            fabricCanvas.updateCanvasObjects?.();
-            
-            // Use requestAnimationFrame to ensure DOM is ready
-            requestAnimationFrame(() => {
-              fabricCanvas.canvasRef?.requestRenderAll();
-              
-              // Double-check with delayed render
-              setTimeout(() => {
-                fabricCanvas.canvasRef?.requestRenderAll();
-                console.log('Design restored from localStorage backup after error');
-                setDesignStatus({ type: 'loaded', message: 'Design restored from backup' });
-              }, 100);
-            });
-            
-            setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
-          });
+      // ALWAYS clear canvas and stop loading on ANY error
+      fabricCanvas.canvasRef.clear();
+      fabricCanvas.canvasRef.backgroundColor = 'transparent';
+      fabricCanvas.canvasRef.renderAll();
+      setDesignStatus({ type: 'loaded', message: 'Ready to design' });
+      isLoadingDesignRef.current = false;
+      
+      // Show appropriate toast based on error type
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          toast.warning('Connection timeout - starting fresh');
+        } else if (error.message.includes('Server error') || error.message.includes('backend')) {
+          toast.warning('Could not connect to server - working offline');
         } else {
-          setDesignStatus({ type: 'load-error', message: 'Failed to load design' });
-          isLoadingDesignRef.current = false;
+          toast.info('Starting with fresh canvas');
         }
-      } catch (backupError) {
-        console.error('Failed to restore from backup:', backupError);
-        setDesignStatus({ type: 'load-error' });
-        isLoadingDesignRef.current = false;
       }
     }
   }, [activeVariant, selectedView, fabricCanvas.canvasRef, setPrintAreaSize, user]);
