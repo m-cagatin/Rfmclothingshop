@@ -45,7 +45,9 @@ import {
   AlignHorizontalSpaceAround,
   Lock,
   Unlock,
-  Eye
+  Eye,
+  ShoppingCart,
+  Loader2
 } from 'lucide-react';
 import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
 import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
@@ -55,6 +57,7 @@ import { useImageUpload } from '../hooks/useImageUpload';
 import { useCanvasResources } from '../hooks/useCanvasResources';
 import { useCanvasZoomPan } from '../hooks/useCanvasZoomPan';
 import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
+import { useCart } from '../hooks/useCart';
 import { PropertiesPanel } from '../components/customizer/PropertiesPanel';
 import { DesignCard } from '../components/customizer/DesignCard';
 import { AlertCircle } from 'lucide-react';
@@ -267,6 +270,12 @@ export function CustomDesignPage() {
       console.log('Object selected:', obj);
     },
   });
+
+  // Initialize cart hook
+  const { addToCart } = useCart();
+  
+  // Add to Cart state
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   // NEW: Helper function to check if variant is active
   const isVariantActive = () => {
@@ -1508,9 +1517,96 @@ export function CustomDesignPage() {
     // Save to localStorage for persistence across page refreshes
     localStorage.setItem('activeVariant', JSON.stringify(newVariant));
     
+    // Set initial size selection (use the selected size or default to first available)
+    if (selectedSize) {
+      setSelectedSize(selectedSize);
+    } else if (product.sizes && product.sizes.length > 0) {
+      setSelectedSize(product.sizes[0]);
+    } else {
+      setSelectedSize('M'); // Default fallback
+    }
+    
     // 5. Close clothing panel and open variant details
     setIsClothingPanelOpen(false);
     setIsVariantDetailsPanelOpen(true);
+  };
+
+  // Handle Add to Cart
+  const handleAddToCart = async () => {
+    if (!activeVariant) {
+      toast.error('Please select a product variant first');
+      return;
+    }
+
+    if (!selectedSize) {
+      toast.error('Please select a size');
+      return;
+    }
+
+    if (!fabricCanvas.canvasRef) {
+      toast.error('Canvas not initialized');
+      return;
+    }
+
+    setIsAddingToCart(true);
+
+    try {
+      // 1. Export canvas design as thumbnail
+      const designDataURL = exportCanvasToDataURL(fabricCanvas.canvasRef, {
+        format: 'png',
+        quality: 0.9,
+        multiplier: 1
+      });
+
+      // 2. Upload thumbnail to Cloudinary
+      const designBlob = await (await fetch(designDataURL)).blob();
+      const formData = new FormData();
+      formData.append('image', designBlob, 'custom-design.png');
+      
+      const uploadResponse = await fetch(`${import.meta.env['VITE_API_BASE'] || ''}/api/custom-design/upload-preview`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      const uploadResult = await uploadResponse.json();
+      const thumbnailUrl = uploadResult?.url || '';
+
+      // 3. Get canvas JSON for customization data
+      const canvasJSON = fabricCanvas.canvasRef.toJSON();
+      
+      const customizationData = {
+        design: canvasJSON,
+        thumbnail: thumbnailUrl,
+        printOption: activeVariant.printOption,
+        printAreaSize: printAreaSize,
+        side: selectedView,
+      };
+
+      // 4. Calculate final price
+      const basePrice = activeVariant.retailPrice || 350;
+      const printCost = activeVariant.printOption === 'front' ? 50 : 
+                       activeVariant.printOption === 'back' ? 50 : 0;
+      const finalPrice = basePrice + printCost;
+
+      // 5. Add to cart
+      await addToCart(
+        activeVariant.productId,
+        `${activeVariant.productName} - ${activeVariant.variantName} (${selectedSize})`,
+        finalPrice,
+        thumbnailUrl || activeVariant.image,
+        productCategory || 'Custom Design',
+        1
+      );
+
+      toast.success('Added to cart successfully!');
+      
+    } catch (error) {
+      console.error('Add to cart error:', error);
+      toast.error('Failed to add to cart. Please try again.');
+    } finally {
+      setIsAddingToCart(false);
+    }
   };
 
   // Remove the hardcoded clothingProducts array - now using real data from above
@@ -3616,9 +3712,49 @@ export function CustomDesignPage() {
             </select>
           </div>
 
-          <Button size="sm" className="bg-green-600 hover:bg-green-700">
-            Save Product
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Size Selector */}
+            {activeVariant && (
+              <Select value={selectedSize} onValueChange={setSelectedSize}>
+                <SelectTrigger className="h-9 w-[100px]">
+                  <SelectValue placeholder="Size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeVariant.size ? (
+                    <SelectItem value={activeVariant.size}>{activeVariant.size}</SelectItem>
+                  ) : (
+                    <>
+                      <SelectItem value="S">S</SelectItem>
+                      <SelectItem value="M">M</SelectItem>
+                      <SelectItem value="L">L</SelectItem>
+                      <SelectItem value="XL">XL</SelectItem>
+                      <SelectItem value="2XL">2XL</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+            
+            {/* Add to Cart Button */}
+            <Button 
+              size="sm" 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={handleAddToCart}
+              disabled={!activeVariant || !selectedSize || isAddingToCart}
+            >
+              {isAddingToCart ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="size-4 mr-2" />
+                  Add to Cart
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
       </div>
