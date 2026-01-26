@@ -22,6 +22,15 @@ interface SubmitPaymentInput {
     quantity: number;
     unitPrice: number;
     subtotal: number;
+    size?: string;
+    color?: string;
+    customizationData?: {
+      productId: number;
+      frontDesignUrl?: string;
+      backDesignUrl?: string;
+      frontCanvasJson?: string;
+      backCanvasJson?: string;
+    };
   }>;
 }
 
@@ -201,6 +210,9 @@ export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentRe
           quantity: item.quantity,
           unit_price: item.unitPrice,
           subtotal: item.subtotal,
+          size: item.size || null,
+          color: item.color || null,
+          customization_data: item.customizationData || null,
         };
       })
     );

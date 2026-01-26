@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -54,9 +56,13 @@ import { useCanvasResources } from '../hooks/useCanvasResources';
 import { useCanvasZoomPan } from '../hooks/useCanvasZoomPan';
 import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
 import { PropertiesPanel } from '../components/customizer/PropertiesPanel';
+import { DesignCard } from '../components/customizer/DesignCard';
 import { AlertCircle } from 'lucide-react';
 import { PRINT_AREA_PRESETS, PrintAreaPreset, DEFAULT_ZOOM } from '../utils/fabricHelpers';
 import { exportCanvasToDataURL, getPrintAreaBounds } from '../utils/canvasExport';
+import { validateDesign, autoFitObjectsToPrintArea, DESIGN_LIMITS } from '../utils/designValidation';
+import { fetchWithRetry, getErrorMessage, formatErrorForLogging } from '../utils/apiHelpers';
+import { LoadingOverlay } from '../components/LoadingComponents';
 import '../styles/canvasEditor.css';
 
 type ViewSide = 'front' | 'back';
@@ -122,6 +128,7 @@ const categoryImages: Record<string, { front: string; back: string }> = {
 export function CustomDesignPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   
   // Canvas zoom/pan hook (Phase 2)
@@ -210,10 +217,10 @@ export function CustomDesignPage() {
   const saveTimeoutRef = useRef<number | null>(null);
   const localStorageIntervalRef = useRef<number | null>(null);
   
-  // Grid and snap settings
+  // Grid and snap settings (grid size is in pixels at 300 DPI: 1" = 300px)
   const [showGrid, setShowGrid] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
-  const [gridSize, setGridSize] = useState(20); // Default 20px grid
+  const [gridSize, setGridSize] = useState(50); // Default 0.5" grid (150px at 300 DPI, scaled down)
   
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState('');
@@ -233,6 +240,10 @@ export function CustomDesignPage() {
   
   // Recent uploads state
   const [recentUploads, setRecentUploads] = useState<Array<{ url: string; width: number; height: number; publicId: string; timestamp: number }>>([]);
+  
+  // Saved designs state
+  const [savedDesigns, setSavedDesigns] = useState<any[]>([]);
+  const [isLoadingDesigns, setIsLoadingDesigns] = useState(false);
   
   // Canvas resources hook
   const { graphics, patterns, fetchGraphics } = useCanvasResources();
@@ -378,49 +389,101 @@ export function CustomDesignPage() {
       return;
     }
 
+    // Check authentication
+    if (!user) {
+      toast.error('Please log in to save your design');
+      return;
+    }
+
+    // Validate design before saving
+    const validation = validateDesign(fabricCanvas.canvasRef, printAreaSize);
+    
+    // Show errors if any
+    if (!validation.valid) {
+      validation.errors.forEach(error => toast.error(error));
+      setDesignStatus({ type: 'idle' });
+      return;
+    }
+
+    // Show warnings but allow save
+    if (validation.warnings.length > 0) {
+      validation.warnings.forEach(warning => toast.warning(warning));
+    }
+
     try {
       setDesignStatus({ type: 'saving' });
       
       const canvasData = fabricCanvas.canvasRef.toJSON();
       const view = selectedView;
       
-      const response = await fetch('/api/design/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          userId: 1, // TODO: Replace with actual user ID from auth
-          customizableProductId: activeVariant.productId,
-          selectedSize: activeVariant.size,
-          selectedPrintOption: activeVariant.printOption,
-          printAreaPreset: printAreaSize,
-          frontCanvasJson: view === 'front' ? canvasData : null,
-          backCanvasJson: view === 'back' ? canvasData : null,
-        }),
-      });
+      const response = await fetchWithRetry(
+        '/api/design/save',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            userId: parseInt(user.id),
+            customizableProductId: activeVariant.productId,
+            selectedSize: activeVariant.size,
+            selectedPrintOption: activeVariant.printOption,
+            printAreaPreset: printAreaSize,
+            frontCanvasJson: view === 'front' ? canvasData : null,
+            backCanvasJson: view === 'back' ? canvasData : null,
+          }),
+        },
+        {
+          maxRetries: 2,
+          onRetry: (attempt) => {
+            toast.info(`Save failed, retrying... (Attempt ${attempt}/2)`);
+          },
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Save failed:', response.status, errorData);
-        throw new Error(`Failed to save design: ${errorData.message || response.statusText}`);
+        console.error('Save failed:', formatErrorForLogging({ status: response.status, message: errorData.message || response.statusText }));
+        throw new Error(errorData.message || `Failed to save design: ${response.statusText}`);
       }
 
       setDesignStatus({ type: 'saved' });
       
     } catch (error) {
-      console.error('Save error:', error);
+      console.error('Save error:', formatErrorForLogging(error));
+      const userMessage = getErrorMessage(error);
+      toast.error(userMessage);
       setDesignStatus({ 
         type: 'save-error',
-        message: error instanceof Error ? error.message : 'Could not save your design. Changes are backed up locally.'
+        message: userMessage
       });
     }
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize]);
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, user]);
 
   // Navigate to preview page with design data
   const handlePreview = useCallback(async () => {
     if (!fabricCanvas.canvasRef || !activeVariant) {
       toast.error('Please select a product variant first');
       return;
+    }
+
+    // Check authentication
+    if (!user) {
+      toast.error('Please log in to preview your design');
+      return;
+    }
+
+    // Validate design before preview
+    const validation = validateDesign(fabricCanvas.canvasRef, printAreaSize);
+    
+    // Show errors if any
+    if (!validation.valid) {
+      validation.errors.forEach(error => toast.error(error));
+      return;
+    }
+
+    // Show warnings but allow preview
+    if (validation.warnings.length > 0) {
+      validation.warnings.forEach(warning => toast.warning(warning));
     }
 
     try {
@@ -456,10 +519,11 @@ export function CustomDesignPage() {
         },
       });
     } catch (error) {
-      console.error('Preview error:', error);
-      toast.error('Failed to generate preview. Please try again.');
+      console.error('Preview error:', formatErrorForLogging(error));
+      const userMessage = getErrorMessage(error);
+      toast.error(userMessage || 'Failed to generate preview. Please try again.');
     }
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, handleSave, navigate]);
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, handleSave, navigate, user]);
 
   // Trigger auto-save with debounce (2 seconds)
   const triggerAutoSave = useCallback(() => {
@@ -472,6 +536,32 @@ export function CustomDesignPage() {
     }, 2000);
   }, [handleSave]);
 
+  // Check if we can add more objects
+  const canAddMoreObjects = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return false;
+    
+    const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
+    if (objects.length >= DESIGN_LIMITS.MAX_OBJECTS) {
+      toast.error(`Maximum number of objects (${DESIGN_LIMITS.MAX_OBJECTS}) reached. Remove some objects to add more.`);
+      return false;
+    }
+    return true;
+  }, [fabricCanvas.canvasRef]);
+
+  // Auto-fit objects outside print area
+  const handleAutoFit = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    
+    const movedCount = autoFitObjectsToPrintArea(fabricCanvas.canvasRef, printAreaSize);
+    
+    if (movedCount > 0) {
+      toast.success(`Moved ${movedCount} object${movedCount > 1 ? 's' : ''} into print area`);
+      triggerAutoSave();
+    } else {
+      toast.info('All objects are already within the print area');
+    }
+  }, [fabricCanvas.canvasRef, printAreaSize, triggerAutoSave]);
+
   // Load saved design from database
   const loadUserDesign = useCallback(async () => {
     console.log('loadUserDesign called:', { activeVariant, hasCanvas: !!fabricCanvas.canvasRef });
@@ -483,7 +573,14 @@ export function CustomDesignPage() {
     setDesignStatus({ type: 'loading' });
 
     try {
-      const userId = 1; // TODO: Replace with actual user ID from auth
+      const userId = user?.id ? parseInt(user.id) : null;
+      if (!userId) {
+        console.error('loadUserDesign: No authenticated user');
+        setDesignStatus({ type: 'load-error', message: 'Please log in to load designs' });
+        isLoadingDesignRef.current = false;
+        return;
+      }
+      
       const response = await fetch(`/api/design/load/${activeVariant.productId}?userId=${userId}`, {
         credentials: 'include',
       });
@@ -492,12 +589,20 @@ export function CustomDesignPage() {
         if (response.status === 404) {
           console.log('No saved design found in database, checking localStorage...');
           
+          // Get userId for localStorage key
+          const userIdForStorage = user?.id ? parseInt(user.id) : 'guest';
+          
           // Try to load from localStorage backup
-          const backupKey = `design_backup_${activeVariant.variantName}_${selectedView}`;
+          const backupKey = `design_backup_${userIdForStorage}_${activeVariant.productId}_${selectedView}`;
           const backupData = localStorage.getItem(backupKey);
           
           if (backupData) {
             const canvasData = JSON.parse(backupData);
+            
+            // Clear canvas before loading to prevent object overlap
+            fabricCanvas.canvasRef.clear();
+            fabricCanvas.canvasRef.backgroundColor = 'transparent';
+            
             fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
               console.log('JSON loaded, forcing render...');
               
@@ -520,8 +625,11 @@ export function CustomDesignPage() {
               setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
             });
           } else {
-            // No saved design, just show variant is loaded
+            // No saved design, clear canvas for fresh start
             console.log('No saved design, fresh start');
+            fabricCanvas.canvasRef.clear();
+            fabricCanvas.canvasRef.backgroundColor = 'transparent';
+            fabricCanvas.canvasRef.renderAll();
             setDesignStatus({ type: 'loaded', message: 'Variant loaded - Ready to design' });
             isLoadingDesignRef.current = false;
           }
@@ -616,7 +724,109 @@ export function CustomDesignPage() {
         isLoadingDesignRef.current = false;
       }
     }
-  }, [activeVariant, selectedView, fabricCanvas.canvasRef, setPrintAreaSize]);
+  }, [activeVariant, selectedView, fabricCanvas.canvasRef, setPrintAreaSize, user]);
+
+  // Fetch all saved designs for user
+  const fetchSavedDesigns = useCallback(async () => {
+    if (!user?.id) return;
+    
+    setIsLoadingDesigns(true);
+    try {
+      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
+      const response = await fetch(`${API_BASE}/api/design/all?userId=${user.id}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch designs');
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        setSavedDesigns(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching saved designs:', error);
+      toast.error('Failed to load saved designs');
+    } finally {
+      setIsLoadingDesigns(false);
+    }
+  }, [user]);
+
+  // Load design from My Library
+  const handleLoadDesign = useCallback(async (design: any) => {
+    // If different product, navigate to that product
+    if (activeVariant?.productId !== design.customizableProductId.toString()) {
+      // Store design to load after navigation
+      sessionStorage.setItem('designToLoad', JSON.stringify(design));
+      toast.info(`Switching to ${design.product.name}...`);
+      // Navigate to custom design page with product ID
+      navigate(`/custom-design?productId=${design.customizableProductId}`);
+      return;
+    }
+    
+    // Same product - just load the design
+    try {
+      isLoadingDesignRef.current = true;
+      setDesignStatus({ type: 'loading', message: 'Loading design...' });
+      
+      // Load canvas JSON
+      if (selectedView === 'front' && design.frontCanvasJson) {
+        await fabricCanvas.loadCanvasFromJSON(design.frontCanvasJson);
+      } else if (selectedView === 'back' && design.backCanvasJson) {
+        await fabricCanvas.loadCanvasFromJSON(design.backCanvasJson);
+      }
+      
+      // Update size and print option
+      setSelectedSize(design.selectedSize);
+      setSelectedPrintOption(design.selectedPrintOption);
+      
+      // Close library panel
+      setIsLibraryPanelOpen(false);
+      
+      setDesignStatus({ type: 'loaded', message: 'Design loaded successfully' });
+      toast.success('Design loaded!');
+      
+      setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
+    } catch (error) {
+      console.error('Error loading design:', error);
+      toast.error('Failed to load design');
+      setDesignStatus({ type: 'load-error' });
+      isLoadingDesignRef.current = false;
+    }
+  }, [activeVariant, selectedView, fabricCanvas, navigate]);
+
+  // Delete saved design
+  const handleDeleteDesign = useCallback(async (designId: number) => {
+    if (!user?.id) return;
+    
+    try {
+      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
+      const design = savedDesigns.find(d => d.id === designId);
+      
+      const response = await fetch(`${API_BASE}/api/design/delete/${design.customizableProductId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete design');
+      }
+      
+      // Refresh designs list
+      setSavedDesigns(prev => prev.filter(d => d.id !== designId));
+      toast.success('Design deleted successfully');
+    } catch (error) {
+      console.error('Error deleting design:', error);
+      toast.error('Failed to delete design');
+    }
+  }, [user, savedDesigns]);
+
+  // Fetch designs when library panel opens
+  useEffect(() => {
+    if (isLibraryPanelOpen && user?.id) {
+      fetchSavedDesigns();
+    }
+  }, [isLibraryPanelOpen, user, fetchSavedDesigns]);
 
   // Alignment functions
   const alignLeft = useCallback(() => {
@@ -902,54 +1112,85 @@ export function CustomDesignPage() {
     toast.success(newLockState ? 'Object locked' : 'Object unlocked');
   }, [fabricCanvas]);
 
-  // Render grid on canvas
-  const renderGrid = useCallback(() => {
-    if (!fabricCanvas.canvasRef || !showGrid) return;
+  // Render grid on canvas (as overlay, not objects)
+  const renderGrid = useCallback(async () => {
+    if (!fabricCanvas.canvasRef) return;
 
     const canvas = fabricCanvas.canvasRef;
     
-    // Remove existing grid lines
-    const existingGrid = canvas.getObjects().filter((obj: any) => obj.id === 'grid-line');
-    existingGrid.forEach((line: any) => canvas.remove(line));
+    if (!showGrid) {
+      // Clear the overlay when grid is disabled
+      canvas.overlayImage = undefined;
+      canvas.renderAll();
+      return;
+    }
 
     // Get canvas dimensions
     const width = canvas.getWidth();
     const height = canvas.getHeight();
+    
+    if (!width || !height) return;
 
-    // Create grid lines
-    const gridLines: any[] = [];
+    // Convert grid size from UI value to actual canvas pixels
+    // Grid sizes: 25=0.25", 50=0.5", 100=1", 150=1.5" at 300 DPI
+    // At 300 DPI: 1 inch = 300 pixels in full resolution
+    // Our canvas is scaled down by DEFAULT_ZOOM (25%), so we need to scale the grid accordingly
+    const dpi = 300;
+    const inchSize = gridSize / 100; // Convert UI value to inches (25->0.25, 50->0.5, etc)
+    const gridSpacing = (inchSize * dpi) * (DEFAULT_ZOOM / 100); // Scale to match canvas zoom
 
-    // Vertical lines
-    for (let x = 0; x <= width; x += gridSize) {
-      const line = new (window as any).fabric.Line([x, 0, x, height], {
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
+    // Create an offscreen canvas for the grid
+    const gridCanvas = document.createElement('canvas');
+    gridCanvas.width = width;
+    gridCanvas.height = height;
+    const ctx = gridCanvas.getContext('2d', { alpha: true });
+    
+    if (!ctx) return;
+
+    // Clear the canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Configure grid appearance
+    ctx.strokeStyle = '#b0b0b0'; // Medium gray for visibility
+    ctx.lineWidth = 1; // Fixed 1px lines for crispness
+    
+    // Draw vertical lines
+    ctx.beginPath();
+    for (let x = 0; x <= width; x += gridSpacing) {
+      ctx.moveTo(Math.round(x) + 0.5, 0); // +0.5 for crisp lines
+      ctx.lineTo(Math.round(x) + 0.5, height);
+    }
+    ctx.stroke();
+    
+    // Draw horizontal lines
+    ctx.beginPath();
+    for (let y = 0; y <= height; y += gridSpacing) {
+      ctx.moveTo(0, Math.round(y) + 0.5); // +0.5 for crisp lines
+      ctx.lineTo(width, Math.round(y) + 0.5);
+    }
+    ctx.stroke();
+
+    // Convert to image and set as overlay
+    try {
+      const { Image: FabricImage } = await import('fabric');
+      const dataUrl = gridCanvas.toDataURL('image/png');
+      const gridImage = await FabricImage.fromURL(dataUrl);
+      
+      gridImage.set({ 
+        opacity: 0.4,
         selectable: false,
         evented: false,
-        id: 'grid-line',
+        left: 0,
+        top: 0,
+        originX: 'left',
+        originY: 'top',
       });
-      gridLines.push(line);
+      
+      canvas.overlayImage = gridImage;
+      canvas.requestRenderAll();
+    } catch (error) {
+      console.error('Error rendering grid:', error);
     }
-
-    // Horizontal lines
-    for (let y = 0; y <= height; y += gridSize) {
-      const line = new (window as any).fabric.Line([0, y, width, y], {
-        stroke: '#e0e0e0',
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-        id: 'grid-line',
-      });
-      gridLines.push(line);
-    }
-
-    // Add all grid lines to canvas
-    gridLines.forEach(line => canvas.add(line));
-    
-    // Send grid lines to back
-    gridLines.forEach(line => (canvas as any).sendObjectToBack(line));
-    
-    canvas.renderAll();
   }, [fabricCanvas, showGrid, gridSize]);
 
   // Snap object position to grid
@@ -1007,39 +1248,10 @@ export function CustomDesignPage() {
 
   // Handle grid rendering and snap-to-grid
   useEffect(() => {
-    if (!fabricCanvas.canvasRef) return undefined;
+    if (!fabricCanvas.canvasRef) return;
 
-    const canvas = fabricCanvas.canvasRef;
-
-    if (showGrid) {
-      // Render grid initially
-      renderGrid();
-      
-      // Re-render grid after canvas renders
-      const handleAfterRender = () => {
-        // Check if grid lines still exist, if not, re-add them
-        const gridExists = canvas.getObjects().some((obj: any) => obj.id === 'grid-line');
-        if (!gridExists) {
-          renderGrid();
-        }
-      };
-      
-      canvas.on('after:render', handleAfterRender);
-      
-      return () => {
-        canvas.off('after:render', handleAfterRender);
-        // Remove grid lines when grid is disabled
-        const existingGrid = canvas.getObjects().filter((obj: any) => obj.id === 'grid-line');
-        existingGrid.forEach((line: any) => canvas.remove(line));
-        canvas.renderAll();
-      };
-    } else {
-      // Remove grid lines when showGrid is false
-      const existingGrid = canvas.getObjects().filter((obj: any) => obj.id === 'grid-line');
-      existingGrid.forEach((line: any) => canvas.remove(line));
-      canvas.renderAll();
-      return undefined;
-    }
+    // Render grid whenever showGrid or gridSize changes
+    renderGrid();
   }, [fabricCanvas.canvasRef, showGrid, gridSize, renderGrid]);
 
   // Handle snap-to-grid during object movement
@@ -1112,7 +1324,7 @@ export function CustomDesignPage() {
         window.clearInterval(localStorageIntervalRef.current);
       }
     };
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView]);
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, user]);
 
   // Force save on window close/refresh
   useEffect(() => {
@@ -1674,6 +1886,15 @@ export function CustomDesignPage() {
       return;
     }
 
+    // Check object limit
+    if (!canAddMoreObjects()) {
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setValidationWarning(null);
 
     // Validate image
@@ -1776,6 +1997,11 @@ export function CustomDesignPage() {
       return;
     }
 
+    // Check object limit
+    if (!canAddMoreObjects()) {
+      return;
+    }
+
     const sizeMap = {
       'Small': 24,
       'Medium': 40,
@@ -1821,6 +2047,11 @@ export function CustomDesignPage() {
       resetView: fabricCanvas.resetView,
       exportHighDPI: fabricCanvas.exportHighDPI,
     }}>
+      {/* Loading overlay when design is loading */}
+      {designStatus.type === 'loading' && (
+        <LoadingOverlay message={designStatus.message || 'Loading your design...'} />
+      )}
+      
       <div className="h-screen flex bg-gray-100 overflow-hidden fixed inset-0">
       {/* Left Vertical Toolbar - Spans full height */}
       <div className="bg-white border-r w-20 flex flex-col items-center py-6 gap-4 z-10">
@@ -2591,15 +2822,15 @@ export function CustomDesignPage() {
 
           {/* My Library Panel - LEFT SIDE */}
           {isLibraryPanelOpen && (
-            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[580px] overflow-hidden z-20 shadow-xl">
               <div className="h-full flex flex-col">
                 <div className="p-5 border-b border-gray-200 bg-gray-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <h2 className="text-xl">My Library</h2>
                       <div className="flex items-center gap-2 text-sm">
-                        <div className="size-2 rounded-full bg-green-500"></div>
-                        <span className="text-gray-600">Available</span>
+                        <div className={`size-2 rounded-full ${savedDesigns.length > 0 ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                        <span className="text-gray-600">{savedDesigns.length} Saved</span>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsLibraryPanelOpen(false)}>
@@ -2609,31 +2840,70 @@ export function CustomDesignPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 min-h-0">
-                  <div className="h-full space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-xs text-gray-500">Saved Designs</p>
-                      <div className="grid grid-cols-2 gap-3">
+                  <div className="h-full space-y-6">
+                    {/* Saved Designs Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-gray-700">📁 Saved Designs</h3>
+                        {savedDesigns.length > 0 && (
+                          <span className="text-xs text-gray-500">{savedDesigns.length} design{savedDesigns.length !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                      
+                      {isLoadingDesigns ? (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        </div>
+                      ) : savedDesigns.length === 0 ? (
+                        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                          <Layers className="size-16 mx-auto mb-3 opacity-30 text-gray-400" />
+                          <p className="text-gray-600 font-medium">No saved designs yet</p>
+                          <p className="text-xs text-gray-500 mt-1">Create your first design to see it here</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          {savedDesigns.map((design) => (
+                            <DesignCard
+                              key={design.id}
+                              design={design}
+                              onLoad={handleLoadDesign}
+                              onDelete={handleDeleteDesign}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-200"></div>
+
+                    {/* Templates Section - Coming Soon */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-gray-700">🎨 Templates</h3>
+                        <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
                         {[1, 2, 3, 4].map((item) => (
-                          <div key={item} className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
-                            <div className="size-full flex flex-col items-center justify-center p-4">
-                              <Layers className="size-12 text-gray-400 mb-2" />
-                              <p className="text-xs text-gray-600">Design {item}</p>
+                          <div 
+                            key={item} 
+                            className="aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 overflow-hidden relative group cursor-not-allowed"
+                          >
+                            <div className="size-full flex flex-col items-center justify-center p-4 opacity-40">
+                              <Package className="size-12 text-gray-400 mb-2" />
+                              <p className="text-xs text-gray-600 text-center">Template {item}</p>
+                            </div>
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Badge variant="secondary" className="text-xs">Available Soon</Badge>
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs text-gray-500">Saved Images</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[1, 2].map((item) => (
-                          <div key={item} className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
-                            <div className="size-full flex items-center justify-center">
-                              <ImageIcon className="size-12 text-gray-400" />
-                            </div>
-                          </div>
-                        ))}
+                      
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                        <p className="font-medium mb-1">✨ Templates Coming in Phase 4</p>
+                        <p className="text-xs">Pre-designed templates will help you create amazing designs faster!</p>
                       </div>
                     </div>
                   </div>
@@ -3035,13 +3305,24 @@ export function CustomDesignPage() {
             >
               {/* Design Area Box with Canvas */}
               <div
-                className="relative border-2 border-dashed border-blue-600 rounded bg-white shadow-lg design-area-box"
+                className="relative rounded bg-white shadow-lg design-area-box"
                 style={{
                   width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
                   height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
+                  // Use outline instead of border - doesn't affect layout, stays outside
+                  outline: `${2 / canvasScale}px dashed #2563eb`,
+                  outlineOffset: `${-2 / canvasScale}px`, // Position it at the edge
                 }}
               >
-                <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded" style={{ pointerEvents: 'none' }}>
+                <div 
+                  className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded" 
+                  style={{ 
+                    pointerEvents: 'none',
+                    // Inverse scale the label to keep it readable
+                    transform: `scale(${1 / canvasScale})`,
+                    transformOrigin: 'left bottom',
+                  }}
+                >
                   Design Area - {PRINT_AREA_PRESETS[printAreaSize].label}
                 </div>
                 
@@ -3276,13 +3557,14 @@ export function CustomDesignPage() {
               <Maximize className="size-4" />
             </Button>
             <Select value={gridSize.toString()} onValueChange={(value) => setGridSize(Number(value))}>
-              <SelectTrigger className="h-8 w-[70px] text-xs">
+              <SelectTrigger className="h-8 w-[80px] text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10px</SelectItem>
-                <SelectItem value="20">20px</SelectItem>
-                <SelectItem value="50">50px</SelectItem>
+                <SelectItem value="25">0.25"</SelectItem>
+                <SelectItem value="50">0.5"</SelectItem>
+                <SelectItem value="100">1"</SelectItem>
+                <SelectItem value="150">1.5"</SelectItem>
               </SelectContent>
             </Select>
             

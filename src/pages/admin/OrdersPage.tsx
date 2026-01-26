@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { Badge } from '../../components/ui/badge';
 import { 
   ChevronLeft, 
   ChevronRight,
@@ -13,7 +14,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Trash2,
-  Truck
+  Truck,
+  Palette
 } from 'lucide-react';
 import {
   DndContext,
@@ -36,7 +38,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { toast } from 'sonner';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
 
 interface Order {
   id: string;
@@ -54,6 +56,15 @@ interface Order {
     quantity: number;
     unitPrice: number;
     subtotal: number;
+    size?: string;
+    color?: string;
+    customizationData?: {
+      productId: number;
+      frontDesignUrl?: string;
+      backDesignUrl?: string;
+      frontCanvasJson?: string;
+      backCanvasJson?: string;
+    };
   }>;
   total: number;
   balanceRemaining: number;
@@ -152,8 +163,8 @@ function SortableOrderCard({ order, onSetShipping }: SortableOrderCardProps) {
         return;
       }
       // Call original handler if it exists
-      if (listeners.onPointerDown) {
-        listeners.onPointerDown(e);
+      if (listeners['onPointerDown']) {
+        listeners['onPointerDown'](e);
       }
     },
   } : undefined;
@@ -164,6 +175,12 @@ function SortableOrderCard({ order, onSetShipping }: SortableOrderCardProps) {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <span className="font-bold">{order.id || 'N/A'}</span>
+            {order.items?.some(item => item.customizationData) && (
+              <Badge variant="secondary" className="text-xs">
+                <Palette className="size-3 mr-1" />
+                Custom
+              </Badge>
+            )}
           </div>
           <p className="text-sm font-medium mt-2">{order.customer?.name || 'Unknown'}</p>
         </CardHeader>
@@ -206,6 +223,7 @@ function SortableOrderCard({ order, onSetShipping }: SortableOrderCardProps) {
 }
 
 export function OrdersPage() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);

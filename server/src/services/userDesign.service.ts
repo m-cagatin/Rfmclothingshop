@@ -8,6 +8,8 @@ export interface SaveDesignData {
   printAreaPreset?: string;
   frontCanvasJson: string | null;
   backCanvasJson: string | null;
+  frontThumbnailUrl?: string | null;
+  backThumbnailUrl?: string | null;
 }
 
 export interface LoadDesignData {
@@ -29,7 +31,7 @@ export class UserDesignService {
    * Save or update user's current design for a specific product
    */
   static async saveDesign(data: SaveDesignData): Promise<LoadDesignData> {
-    const { userId, customizableProductId, selectedSize, selectedPrintOption, printAreaPreset, frontCanvasJson, backCanvasJson } = data;
+    const { userId, customizableProductId, selectedSize, selectedPrintOption, printAreaPreset, frontCanvasJson, backCanvasJson, frontThumbnailUrl, backThumbnailUrl } = data;
 
     // Use upsert to either create new or update existing design
     const design = await prisma.user_current_design.upsert({
@@ -45,6 +47,8 @@ export class UserDesignService {
         print_area_preset: printAreaPreset || 'Letter',
         front_canvas_json: frontCanvasJson,
         back_canvas_json: backCanvasJson,
+        front_thumbnail_url: frontThumbnailUrl,
+        back_thumbnail_url: backThumbnailUrl,
         last_saved_at: new Date(),
         updated_at: new Date()
       },
@@ -56,6 +60,8 @@ export class UserDesignService {
         print_area_preset: printAreaPreset || 'Letter',
         front_canvas_json: frontCanvasJson,
         back_canvas_json: backCanvasJson,
+        front_thumbnail_url: frontThumbnailUrl,
+        back_thumbnail_url: backThumbnailUrl,
         last_saved_at: new Date(),
         created_at: new Date(),
         updated_at: new Date()
@@ -129,12 +135,29 @@ export class UserDesignService {
   }
 
   /**
-   * Get all saved designs for a user
+   * Get all saved designs for a user with product information
    */
-  static async getAllUserDesigns(userId: string): Promise<LoadDesignData[]> {
+  static async getAllUserDesigns(userId: string): Promise<any[]> {
     const designs = await prisma.user_current_design.findMany({
       where: {
         user_id: userId
+      },
+      include: {
+        customizable_products: {
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            gender: true,
+            fit_type: true,
+            product_code: true,
+            retail_price: true,
+            front_print_cost: true,
+            back_print_cost: true,
+            base_color_name: true,
+            base_color_hex: true
+          }
+        }
       },
       orderBy: {
         last_saved_at: 'desc'
@@ -150,9 +173,12 @@ export class UserDesignService {
       printAreaPreset: design.print_area_preset,
       frontCanvasJson: design.front_canvas_json,
       backCanvasJson: design.back_canvas_json,
+      frontThumbnailUrl: design.front_thumbnail_url,
+      backThumbnailUrl: design.back_thumbnail_url,
       lastSavedAt: design.last_saved_at,
       createdAt: design.created_at,
-      updatedAt: design.updated_at
+      updatedAt: design.updated_at,
+      product: design.customizable_products
     }));
   }
 }

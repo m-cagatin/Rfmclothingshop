@@ -37,6 +37,7 @@ import {
 } from "react-router-dom";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CartDrawer, CartItem } from "./components/CartDrawer";
 import {
   FavoritesDrawer,
@@ -50,7 +51,7 @@ function ProtectedRoute({
   children,
   onRequireAuth,
 }: {
-  children: JSX.Element;
+  children: React.ReactElement;
   onRequireAuth: () => void;
 }) {
   const { isLoggedIn, isHydrating } = useAuth();
@@ -77,7 +78,7 @@ function AdminRoute({
   children,
   onRequireAuth,
 }: {
-  children: JSX.Element;
+  children: React.ReactElement;
   onRequireAuth: () => void;
 }) {
   const { isLoggedIn, user, isHydrating } = useAuth();
@@ -171,7 +172,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                 onAddToCart={handleAddToCart}
                 onToggleFavorite={handleToggleFavorite}
                 favorites={favorites}
-                isFavorited={isFavorited}
               />
             } />
             <Route
@@ -181,7 +181,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -192,7 +191,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -203,7 +201,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -214,7 +211,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -225,7 +221,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -239,7 +234,19 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                 />
               }
             />
-            <Route path="/custom-design" element={<CustomDesignPage />} />
+            <Route 
+              path="/custom-design" 
+              element={
+                <ErrorBoundary 
+                  fallbackMessage="The design editor encountered an error. Your work may have been auto-saved."
+                  onReset={() => {
+                    localStorage.removeItem('fabricCanvas');
+                  }}
+                >
+                  <CustomDesignPage />
+                </ErrorBoundary>
+              } 
+            />
             <Route path="/custom-design-preview" element={<CustomDesignPreviewPage />} />
             <Route path="/custom-products" element={<CustomProductsPage />} />
             <Route path="/custom-product/:id" element={<CustomProductDetailsPage />} />

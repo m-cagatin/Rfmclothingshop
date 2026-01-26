@@ -16,7 +16,7 @@ import {
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
 
 interface Order {
   id: string;
@@ -110,7 +110,7 @@ export function ReportsPage() {
   // Prepare sales data (last 6 months)
   const prepareSalesData = () => {
     const now = new Date();
-    const months = [];
+    const months: Array<{ month: string; revenue: number; orders: number }> = [];
     for (let i = 5; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
       months.push({

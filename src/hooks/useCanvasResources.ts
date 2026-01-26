@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CanvasGraphic, CanvasPattern, GraphicCategory } from '../types/canvasResource';
 
-const API_BASE = 'http://localhost:4000/api/canvas-resources';
+const API_BASE = `${import.meta.env['VITE_API_BASE'] || 'http://localhost:4000'}/api/canvas-resources`;
 
 export function useCanvasResources() {
   const [graphics, setGraphics] = useState<CanvasGraphic[]>([]);

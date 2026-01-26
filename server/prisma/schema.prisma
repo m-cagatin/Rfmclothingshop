@@ -219,6 +219,8 @@ model user_current_design {
   print_area_preset        String                @default("Letter") @db.VarChar(50)
   front_canvas_json        String?               @db.Text
   back_canvas_json         String?               @db.Text
+  front_thumbnail_url      String?               @db.VarChar(500)
+  back_thumbnail_url       String?               @db.VarChar(500)
   last_saved_at            DateTime              @default(now())
   created_at               DateTime              @default(now())
   updated_at               DateTime              @default(now())

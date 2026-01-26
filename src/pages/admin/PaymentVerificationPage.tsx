@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { Badge } from '../../components/ui/badge';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
 
 interface PaymentVerification {
   id: string;
