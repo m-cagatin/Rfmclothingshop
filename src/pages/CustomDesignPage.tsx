@@ -131,7 +131,7 @@ const categoryImages: Record<string, { front: string; back: string }> = {
 export function CustomDesignPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, isHydrating } = useAuth();
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   
   // Canvas zoom/pan hook (Phase 2)
@@ -420,11 +420,43 @@ export function CustomDesignPage() {
     }
 
     try {
-      setDesignStatus({ type: 'saving' });
+      setDesignStatus({ type: 'saving', message: 'Saving design...' });
       
-      const canvasData = fabricCanvas.canvasRef.toJSON();
+      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
+      
+      // 1. Export canvas to thumbnail
+      const thumbnailDataURL = exportCanvasToDataURL(fabricCanvas.canvasRef, {
+        format: 'png',
+        quality: 0.8,
+        multiplier: 0.5  // Smaller for thumbnail
+      });
+      
+      // 2. Upload thumbnail to Cloudinary
+      const thumbnailBlob = await (await fetch(thumbnailDataURL)).blob();
+      const formData = new FormData();
+      formData.append('image', thumbnailBlob, 'thumbnail.png');
+      formData.append('userId', user.id);
+      formData.append('productId', activeVariant.productId);
+      formData.append('view', selectedView);
+      
+      const uploadResponse = await fetch(`${API_BASE}/api/custom-design/upload-preview`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload thumbnail');
+      }
+      
+      const uploadResult = await uploadResponse.json();
+      const thumbnailUrl = uploadResult.url;
+      
+      // 3. Get canvas JSON
+      const canvasJSON = JSON.stringify(fabricCanvas.canvasRef.toJSON());
       const view = selectedView;
       
+      // 4. Save to database with correct field names
       const response = await fetchWithRetry(
         '/api/design/save',
         {
@@ -432,13 +464,15 @@ export function CustomDesignPage() {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            userId: parseInt(user.id),
-            customizableProductId: activeVariant.productId,
-            selectedSize: activeVariant.size,
-            selectedPrintOption: activeVariant.printOption,
+            userId: user.id,
+            customizableProductId: parseInt(activeVariant.productId),
+            selectedSize: selectedSize || 'M',
+            selectedPrintOption: view === 'front' ? 'front' : 'back',
             printAreaPreset: printAreaSize,
-            frontCanvasJson: view === 'front' ? canvasData : null,
-            backCanvasJson: view === 'back' ? canvasData : null,
+            frontCanvasJson: view === 'front' ? canvasJSON : null,
+            backCanvasJson: view === 'back' ? canvasJSON : null,
+            frontThumbnailUrl: view === 'front' ? thumbnailUrl : null,
+            backThumbnailUrl: view === 'back' ? thumbnailUrl : null,
           }),
         },
         {
@@ -455,7 +489,13 @@ export function CustomDesignPage() {
         throw new Error(errorData.message || `Failed to save design: ${response.statusText}`);
       }
 
-      setDesignStatus({ type: 'saved' });
+      setDesignStatus({ type: 'saved', message: 'Design saved successfully!' });
+      toast.success('Design saved to My Library!');
+      
+      // Auto-hide success message
+      setTimeout(() => {
+        setDesignStatus({ type: 'idle' });
+      }, 3000);
       
     } catch (error) {
       console.error('Save error:', formatErrorForLogging(error));
@@ -466,7 +506,7 @@ export function CustomDesignPage() {
         message: userMessage
       });
     }
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, user]);
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, selectedSize, user]);
 
   // Navigate to preview page with design data
   const handlePreview = useCallback(async () => {
@@ -1363,8 +1403,16 @@ export function CustomDesignPage() {
       hasVariant: !!activeVariant, 
       hasCanvas: !!fabricCanvas.canvasRef,
       productId: activeVariant?.productId,
-      view: selectedView
+      view: selectedView,
+      isHydrating,
+      hasUser: !!user
     });
+    
+    // Wait for auth hydration to complete before loading
+    if (isHydrating) {
+      console.log('Skipped loadUserDesign - auth still hydrating');
+      return;
+    }
     
     if (activeVariant && fabricCanvas.canvasRef) {
       console.log('Calling loadUserDesign...');
@@ -1372,7 +1420,7 @@ export function CustomDesignPage() {
     } else {
       console.log('Skipped loadUserDesign - missing variant or canvas');
     }
-  }, [activeVariant?.productId, selectedView, fabricCanvas.canvasRef, loadUserDesign]); // Include loadUserDesign
+  }, [activeVariant?.productId, selectedView, fabricCanvas.canvasRef, loadUserDesign, isHydrating, user]); // Added isHydrating and user
   
   // Centralized toast notification handler - shows messages based on status changes
   useEffect(() => {
@@ -1596,7 +1644,10 @@ export function CustomDesignPage() {
         finalPrice,
         thumbnailUrl || activeVariant.image,
         productCategory || 'Custom Design',
-        1
+        1,
+        selectedSize,
+        activeVariant.color || activeVariant.variantName,
+        customizationData
       );
 
       toast.success('Added to cart successfully!');

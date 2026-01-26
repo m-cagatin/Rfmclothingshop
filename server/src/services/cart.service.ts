@@ -41,19 +41,24 @@ export async function addToCart(req: Request, res: Response) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { productId, productName, price, image, category, quantity = 1 } = req.body;
+    const { productId, productName, price, image, category, quantity = 1, size, color, customizationData } = req.body;
 
     if (!productId || !productName || price === undefined) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const existing = await prisma.userCart.findUnique({
-      where: { userId_productId: { userId, productId } },
+    const existing = await prisma.userCart.findFirst({
+      where: { 
+        userId, 
+        productId,
+        size: size || null,
+        color: color || null
+      },
     });
 
     if (existing) {
       const updated = await prisma.userCart.update({
-        where: { userId_productId: { userId, productId } },
+        where: { id: existing.id },
         data: { quantity: existing.quantity + (quantity || 1) },
       });
       return res.json({ item: updated });
@@ -68,6 +73,9 @@ export async function addToCart(req: Request, res: Response) {
         image: image || null,
         category: category || null,
         quantity: quantity || 1,
+        size: size || null,
+        color: color || null,
+        customizationData: customizationData || null,
       },
     });
 
