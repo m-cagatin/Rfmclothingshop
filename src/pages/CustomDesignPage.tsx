@@ -1646,7 +1646,7 @@ export function CustomDesignPage() {
         productCategory || 'Custom Design',
         1,
         selectedSize,
-        activeVariant.color || activeVariant.variantName,
+        activeVariant.variantName,
         customizationData
       );
 
