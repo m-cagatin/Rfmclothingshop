@@ -489,8 +489,7 @@ export function CustomDesignPage() {
         throw new Error(errorData.message || `Failed to save design: ${response.statusText}`);
       }
 
-      setDesignStatus({ type: 'saved', message: 'Design saved successfully!' });
-      toast.success('Design saved to My Library!');
+      setDesignStatus({ type: 'saved', message: 'Auto-saved!' });
       
       // Auto-hide success message
       setTimeout(() => {
@@ -521,6 +520,13 @@ export function CustomDesignPage() {
       return;
     }
 
+    // Check if there are any design objects
+    const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
+    if (objects.length === 0) {
+      toast.error('Please add some design elements before previewing');
+      return;
+    }
+
     // Validate design before preview
     const validation = validateDesign(fabricCanvas.canvasRef, printAreaSize);
     
@@ -536,7 +542,9 @@ export function CustomDesignPage() {
     }
 
     try {
-      // Save design first to ensure it's persisted
+      setDesignStatus({ type: 'saving', message: 'Preparing preview...' });
+
+      // Save work-in-progress first to ensure it's persisted
       await handleSave();
 
       // Get canvas JSON data
@@ -556,11 +564,22 @@ export function CustomDesignPage() {
         ...printAreaBounds,
       });
 
-      // Navigate to preview page with state
+      setDesignStatus({ type: 'idle' });
+
+      // Navigate to preview page with complete state
       navigate('/preview-design', {
         state: {
           designData: canvasData,
-          variant: activeVariant,
+          variant: {
+            id: activeVariant.id,
+            productId: activeVariant.productId,
+            productName: activeVariant.productName,
+            variantName: activeVariant.variantName,
+            size: selectedSize || 'M',
+            image: activeVariant.image,
+            retailPrice: activeVariant.retailPrice,
+            totalPrice: activeVariant.totalPrice,
+          },
           view: selectedView,
           printAreaSize,
           previewImage,
@@ -571,8 +590,9 @@ export function CustomDesignPage() {
       console.error('Preview error:', formatErrorForLogging(error));
       const userMessage = getErrorMessage(error);
       toast.error(userMessage || 'Failed to generate preview. Please try again.');
+      setDesignStatus({ type: 'idle' });
     }
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, handleSave, navigate, user]);
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, selectedSize, handleSave, navigate, user]);
 
   // Trigger auto-save with debounce (2 seconds)
   const triggerAutoSave = useCallback(() => {
