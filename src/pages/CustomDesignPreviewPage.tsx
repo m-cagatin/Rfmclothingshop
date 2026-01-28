@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/button';
-import { ArrowLeft, ShoppingCart, Download, Edit3, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Download, Edit3, AlertCircle, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { downloadCanvas } from '../utils/canvasExport';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DesignState {
   designData: string; // Canvas JSON
@@ -27,9 +28,13 @@ export function CustomDesignPreviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { user } = useAuth();
   
   const [designState, setDesignState] = useState<DesignState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [designName, setDesignName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Load design state from navigation
   useEffect(() => {
@@ -113,6 +118,68 @@ export function CustomDesignPreviewPage() {
         returnFromPreview: true,
       },
     });
+  };
+
+  // Handle save to library
+  const handleSaveToLibrary = async () => {
+    if (!user) {
+      toast.error('Please log in to save designs');
+      return;
+    }
+
+    if (!designState) {
+      toast.error('No design to save');
+      return;
+    }
+
+    if (!designName.trim()) {
+      toast.error('Please enter a design name');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
+      
+      const response = await fetch(`${API_BASE}/api/saved-designs/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userId: user.id,
+          customizableProductId: parseInt(designState.variant.productId),
+          designName: designName.trim(),
+          selectedSize: designState.variant.size,
+          selectedPrintOption: designState.view === 'front' ? 'front' : 'back',
+          printAreaPreset: designState.printAreaSize,
+          frontCanvasJson: designState.view === 'front' ? designState.designData : null,
+          backCanvasJson: designState.view === 'back' ? designState.designData : null,
+          frontThumbnailUrl: designState.view === 'front' ? designState.previewImage : null,
+          backThumbnailUrl: designState.view === 'back' ? designState.previewImage : null,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to save design');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success('Design saved to My Library!');
+        setShowSaveModal(false);
+        setDesignName('');
+      } else {
+        throw new Error(result.message || 'Failed to save design');
+      }
+    } catch (error) {
+      console.error('Save to library error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save design to library');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (isLoading) {
@@ -259,6 +326,14 @@ export function CustomDesignPreviewPage() {
             {/* Action Buttons */}
             <div className="bg-white rounded-xl border shadow-sm p-6 space-y-3">
               <Button 
+                className="w-full h-12 text-base bg-green-600 hover:bg-green-700"
+                onClick={() => setShowSaveModal(true)}
+              >
+                <Save className="size-5 mr-2" />
+                Save to My Library
+              </Button>
+
+              <Button 
                 className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700"
                 onClick={handleAddToCart}
               >
@@ -279,12 +354,81 @@ export function CustomDesignPreviewPage() {
             {/* Info Card */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm text-blue-900">
-                💡 <strong>Note:</strong> Your design is saved. You can continue editing or add it to your cart to proceed with the order.
+                💡 <strong>Tip:</strong> Save your design to My Library before adding to cart. You can reuse saved designs anytime!
               </p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Save to Library Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">Save to My Library</h3>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Design Name
+                </label>
+                <input
+                  type="text"
+                  value={designName}
+                  onChange={(e) => setDesignName(e.target.value)}
+                  placeholder="e.g., My Awesome T-Shirt"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isSaving) {
+                      handleSaveToLibrary();
+                    }
+                  }}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Give your design a memorable name
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowSaveModal(false)}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  onClick={handleSaveToLibrary}
+                  disabled={isSaving || !designName.trim()}
+                >
+                  {isSaving ? (
+                    <>
+                      <div className="size-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="size-4 mr-2" />
+                      Save
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

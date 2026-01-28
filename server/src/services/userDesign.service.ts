@@ -154,8 +154,8 @@ export class UserDesignService {
             retail_price: true,
             front_print_cost: true,
             back_print_cost: true,
-            base_color_name: true,
-            base_color_hex: true
+            color_name: true,
+            color_hex: true
           }
         }
       },
