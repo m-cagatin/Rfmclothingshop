@@ -47,6 +47,44 @@ router.post('/save', async (req, res) => {
 });
 
 /**
+ * GET /api/design/load/last-used
+ * Get the most recently edited design to restore variant on page refresh
+ */
+router.get('/load/last-used', async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameter: userId'
+      });
+    }
+
+    const lastDesign = await UserDesignService.getLastUsedDesign(userId as string);
+
+    if (!lastDesign) {
+      return res.status(404).json({
+        success: false,
+        message: 'No previous design found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: lastDesign
+    });
+  } catch (error) {
+    console.error('Error loading last-used design:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to load last-used design',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * GET /api/design/load/:productId
  * Load current design for a product
  */

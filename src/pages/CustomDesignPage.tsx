@@ -104,6 +104,24 @@ interface LayerItem {
   }[];
 }
 
+interface ClothingVariant {
+  id: string;
+  productId: string;
+  productName: string;
+  variantName: string;
+  baseProduct: string;
+  image: string;
+  size: string;
+  color: string;
+  colorCode: string;
+  price: number;
+  retailPrice: number;
+  totalPrice: number;
+  category: string;
+  printOption: 'none' | 'front' | 'back';
+  isAvailable: boolean;
+}
+
 // Category-specific clothing images - Using uploaded white t-shirt mockups
 const categoryImages: Record<string, { front: string; back: string }> = {
   'T-Shirt': {
@@ -134,13 +152,12 @@ export function CustomDesignPage() {
   const { user, isHydrating } = useAuth();
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   
-  // Redirect to home if user is not authenticated (after hydration completes)
+  // Show warning if not logged in (but don't redirect - let them use the editor)
   useEffect(() => {
     if (!isHydrating && !user) {
-      toast.error('Please log in to use the design editor');
-      navigate('/', { replace: true });
+      toast.info('Log in to save your designs automatically', { duration: 5000 });
     }
-  }, [user, isHydrating, navigate]);
+  }, [user, isHydrating]);
   
   // Canvas zoom/pan hook (Phase 2)
   const {
@@ -400,38 +417,50 @@ export function CustomDesignPage() {
 
     // Check authentication
     if (!user) {
+      console.error('❌ Cannot save: User not authenticated');
       toast.error('Please log in to save your design');
-      return;
+      throw new Error('User not authenticated');
     }
+
+    console.log('💾 Starting save process...', {
+      productId: activeVariant.productId,
+      view: selectedView,
+      userId: user.id
+    });
 
     // Validate design before saving
     const validation = validateDesign(fabricCanvas.canvasRef, printAreaSize);
     
     // Show errors if any
     if (!validation.valid) {
+      console.error('❌ Validation failed:', validation.errors);
       validation.errors.forEach(error => toast.error(error));
       setDesignStatus({ type: 'idle' });
-      return;
+      throw new Error('Validation failed');
     }
 
     // Show warnings but allow save
     if (validation.warnings.length > 0) {
+      console.warn('⚠️ Validation warnings:', validation.warnings);
       validation.warnings.forEach(warning => toast.warning(warning));
     }
 
     try {
       setDesignStatus({ type: 'saving', message: 'Saving design...' });
       
-      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
+      console.log('📡 Saving design via proxy');
       
       // 1. Export canvas to thumbnail
+      console.log('🖼️ Exporting canvas thumbnail...');
       const thumbnailDataURL = exportCanvasToDataURL(fabricCanvas.canvasRef, {
         format: 'png',
         quality: 0.8,
         multiplier: 0.5  // Smaller for thumbnail
       });
+      console.log('✅ Thumbnail exported');
       
       // 2. Upload thumbnail to Cloudinary
+      console.log('☁️ Uploading to Cloudinary...');
       const thumbnailBlob = await (await fetch(thumbnailDataURL)).blob();
       const formData = new FormData();
       formData.append('image', thumbnailBlob, 'thumbnail.png');
@@ -439,14 +468,18 @@ export function CustomDesignPage() {
       formData.append('productId', activeVariant.productId);
       formData.append('view', selectedView);
       
-      const uploadResponse = await fetch(`${API_BASE}/api/custom-design/upload-preview`, {
+      const uploadResponse = await fetch(`/api/custom-design/upload-preview`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
       });
       
+      console.log('📤 Upload response status:', uploadResponse.status);
+      
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload thumbnail');
+        const errorText = await uploadResponse.text();
+        console.error('❌ Upload failed:', errorText);
+        throw new Error(`Failed to upload thumbnail: ${uploadResponse.status} ${errorText}`);
       }
       
       const uploadResult = await uploadResponse.json();
@@ -456,7 +489,33 @@ export function CustomDesignPage() {
       const canvasJSON = JSON.stringify(fabricCanvas.canvasRef.toJSON());
       const view = selectedView;
       
-      // 4. Save to database with correct field names
+      // 4. Load existing design to preserve other canvas view
+      let existingFrontCanvas = null;
+      let existingBackCanvas = null;
+      let existingFrontThumbnail = null;
+      let existingBackThumbnail = null;
+      
+      try {
+        const loadResponse = await fetch(`/api/design/load/${activeVariant.productId}?userId=${user.id}`, {
+          credentials: 'include',
+        });
+        if (loadResponse.ok) {
+          const loadResult = await loadResponse.json();
+          existingFrontCanvas = loadResult.data?.frontCanvasJson;
+          existingBackCanvas = loadResult.data?.backCanvasJson;
+          existingFrontThumbnail = loadResult.data?.frontThumbnailUrl;
+          existingBackThumbnail = loadResult.data?.backThumbnailUrl;
+          console.log('✅ Loaded existing design to preserve other view');
+        } else if (loadResponse.status === 404) {
+          console.log('ℹ️ No existing design found (this is normal for new designs)');
+        } else {
+          console.warn('⚠️ Unexpected status when loading existing design:', loadResponse.status);
+        }
+      } catch (error) {
+        console.log('ℹ️ No existing design to preserve (this is normal for new designs)');
+      }
+      
+      // 5. Save to database - preserve other view's data
       const response = await fetchWithRetry(
         '/api/design/save',
         {
@@ -469,10 +528,10 @@ export function CustomDesignPage() {
             selectedSize: selectedSize || 'M',
             selectedPrintOption: view === 'front' ? 'front' : 'back',
             printAreaPreset: printAreaSize,
-            frontCanvasJson: view === 'front' ? canvasJSON : null,
-            backCanvasJson: view === 'back' ? canvasJSON : null,
-            frontThumbnailUrl: view === 'front' ? thumbnailUrl : null,
-            backThumbnailUrl: view === 'back' ? thumbnailUrl : null,
+            frontCanvasJson: view === 'front' ? canvasJSON : existingFrontCanvas,
+            backCanvasJson: view === 'back' ? canvasJSON : existingBackCanvas,
+            frontThumbnailUrl: view === 'front' ? thumbnailUrl : existingFrontThumbnail,
+            backThumbnailUrl: view === 'back' ? thumbnailUrl : existingBackThumbnail,
           }),
         },
         {
@@ -507,92 +566,145 @@ export function CustomDesignPage() {
     }
   }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, selectedSize, user]);
 
+  // Handle view switching (front/back) - save current view first
+  const handleViewSwitch = useCallback(async (newView: ViewSide) => {
+    if (newView === selectedView) return;
+    
+    // Save current view before switching
+    if (fabricCanvas.canvasRef && activeVariant) {
+      const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
+      if (objects.length > 0) {
+        console.log(`Saving ${selectedView} view before switching to ${newView}...`);
+        await handleSave();
+        console.log('✅ Save complete, switching view now');
+      }
+    }
+    
+    // Only switch after save completes (or if no save needed)
+    setSelectedView(newView);
+  }, [selectedView, fabricCanvas.canvasRef, activeVariant, handleSave]);
+
   // Navigate to preview page with design data
-  const handlePreview = useCallback(async () => {
-    if (!fabricCanvas.canvasRef || !activeVariant) {
-      toast.error('Please select a product variant first');
+  // Preview handler - NOT wrapped in useCallback to always have fresh canvas reference
+  const handlePreview = async () => {
+    console.log('🔵 Preview button clicked');
+    console.log('🔵 Canvas ref exists:', !!fabricCanvas.canvasRef);
+    console.log('🔵 Active variant:', activeVariant?.productName || 'none');
+    
+    // Get current canvas reference directly
+    const canvas = fabricCanvas.canvasRef;
+    
+    // Validation 1: Canvas must exist
+    if (!canvas) {
+      console.error('❌ Canvas not initialized');
+      toast.error('Canvas not ready. Please wait and try again.');
       return;
     }
 
-    // Check authentication
-    if (!user) {
-      toast.error('Please log in to preview your design');
+    // Validation 2: Variant must be selected
+    if (!activeVariant) {
+      console.error('❌ No variant selected');
+      toast.error('Please select a product first');
       return;
     }
 
-    // Check if there are any design objects
-    const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
-    if (objects.length === 0) {
+    // Get all objects excluding print area markers
+    const allObjects = canvas.getObjects();
+    console.log('🔵 Total objects on canvas:', allObjects.length);
+    
+    const designObjects = allObjects.filter(obj => {
+      const name = (obj as any).name || '';
+      return !name.includes('print-area') && !name.includes('boundary');
+    });
+    console.log('🔵 Design objects (excluding markers):', designObjects.length);
+
+    // Validation 3: Must have at least one design element
+    if (designObjects.length === 0) {
+      console.error('❌ No design objects found');
       toast.error('Please add some design elements before previewing');
       return;
     }
 
-    // Validate design before preview
-    const validation = validateDesign(fabricCanvas.canvasRef, printAreaSize);
-    
-    // Show errors if any
-    if (!validation.valid) {
-      validation.errors.forEach(error => toast.error(error));
-      return;
-    }
-
-    // Show warnings but allow preview
-    if (validation.warnings.length > 0) {
-      validation.warnings.forEach(warning => toast.warning(warning));
-    }
-
     try {
-      setDesignStatus({ type: 'saving', message: 'Preparing preview...' });
+      // Save to database first if user is logged in (so design persists)
+      if (user) {
+        console.log('🔵 User logged in, saving design to database before preview...');
+        try {
+          await handleSave();
+          console.log('✅ Design saved to database');
+        } catch (saveError) {
+          console.warn('⚠️ Save failed, but continuing to preview:', saveError);
+          // Don't block preview if save fails
+        }
+      }
 
-      // Save work-in-progress first to ensure it's persisted
-      await handleSave();
-
-      // Get canvas JSON data
-      const canvasData = JSON.stringify(fabricCanvas.canvasRef.toJSON());
+      // Export canvas JSON
+      const canvasJSON = canvas.toJSON();
+      const canvasData = JSON.stringify(canvasJSON);
+      console.log('✅ Canvas JSON exported, objects:', canvasJSON.objects?.length || 0);
       
-      // Export design as image (print area only)
+      // Get print area dimensions
       const printArea = PRINT_AREA_PRESETS[printAreaSize];
-      const printAreaBounds = getPrintAreaBounds(fabricCanvas.canvasRef, {
+      if (!printArea) {
+        console.error('❌ Invalid print area preset:', printAreaSize);
+        toast.error('Invalid print area configuration');
+        return;
+      }
+      
+      // Calculate bounds for export
+      const printAreaBounds = getPrintAreaBounds(canvas, {
         width: printArea.width,
         height: printArea.height,
       });
+      console.log('🔵 Print area bounds:', printAreaBounds);
       
-      const previewImage = exportCanvasToDataURL(fabricCanvas.canvasRef, {
+      // Export preview image
+      const previewImage = exportCanvasToDataURL(canvas, {
         format: 'png',
         quality: 1,
         multiplier: 2,
         ...printAreaBounds,
       });
+      console.log('✅ Preview image exported, length:', previewImage.length);
 
-      setDesignStatus({ type: 'idle' });
-
-      // Navigate to preview page with complete state
-      navigate('/preview-design', {
-        state: {
-          designData: canvasData,
-          variant: {
-            id: activeVariant.id,
-            productId: activeVariant.productId,
-            productName: activeVariant.productName,
-            variantName: activeVariant.variantName,
-            size: selectedSize || 'M',
-            image: activeVariant.image,
-            retailPrice: activeVariant.retailPrice,
-            totalPrice: activeVariant.totalPrice,
-          },
-          view: selectedView,
-          printAreaSize,
-          previewImage,
-          timestamp: Date.now(),
+      // Build navigation state matching DesignState interface exactly
+      const navigationState = {
+        designData: canvasData,
+        variant: {
+          id: activeVariant.id,
+          productId: activeVariant.productId,
+          productName: activeVariant.productName,
+          variantName: activeVariant.variantName,
+          size: selectedSize || 'M',
+          image: activeVariant.image,
+          retailPrice: activeVariant.retailPrice,
+          totalPrice: activeVariant.totalPrice,
         },
+        view: selectedView,
+        printAreaSize,
+        previewImage,
+        timestamp: Date.now(),
+      };
+
+      console.log('🔵 Navigation state built:', {
+        designDataLength: navigationState.designData.length,
+        variantName: navigationState.variant.productName,
+        view: navigationState.view,
+        printAreaSize: navigationState.printAreaSize,
+        previewImageLength: navigationState.previewImage.length,
       });
+
+      // Navigate to preview page
+      console.log('🔵 Calling navigate to /custom-design-preview');
+      navigate('/custom-design-preview', { state: navigationState });
+      console.log('✅ Navigate called successfully');
+      
     } catch (error) {
-      console.error('Preview error:', formatErrorForLogging(error));
-      const userMessage = getErrorMessage(error);
-      toast.error(userMessage || 'Failed to generate preview. Please try again.');
-      setDesignStatus({ type: 'idle' });
+      console.error('❌ Preview error:', error);
+      console.error('❌ Error stack:', (error as Error).stack);
+      toast.error('Failed to generate preview: ' + (error as Error).message);
     }
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, selectedSize, handleSave, navigate, user]);
+  };
 
   // Trigger auto-save with debounce (2 seconds)
   const triggerAutoSave = useCallback(() => {
@@ -601,9 +713,8 @@ export function CustomDesignPage() {
     // Count actual design objects (exclude print area markers)
     const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
     
-    // Only auto-save if 2 or more objects exist
-    if (objects.length < 2) {
-      console.log(`Auto-save disabled: Only ${objects.length} object(s). Add 2+ objects or click Save button.`);
+    // Auto-save when there's at least 1 object
+    if (objects.length < 1) {
       return;
     }
     
@@ -642,62 +753,43 @@ export function CustomDesignPage() {
     }
   }, [fabricCanvas.canvasRef, printAreaSize, triggerAutoSave]);
 
-  // Load saved design from database
+  // Load saved design from database (only if user is logged in)
   const loadUserDesign = useCallback(async () => {
-    console.log('loadUserDesign called:', { activeVariant, hasCanvas: !!fabricCanvas.canvasRef });
+    // Skip if no user or no variant/canvas
+    if (!user?.id || !activeVariant || !fabricCanvas.canvasRef) {
+      console.log('loadUserDesign: Skipped - missing user, variant, or canvas');
+      return;
+    }
     
-    if (!activeVariant || !fabricCanvas.canvasRef) return;
-
-    // Set loading flag to prevent auto-save during load
+    console.log('loadUserDesign: Attempting to load for product', activeVariant.productId);
     isLoadingDesignRef.current = true;
-    setDesignStatus({ type: 'loading' });
-
-    // Add 5 second timeout - if backend doesn't respond, fail gracefully
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     try {
-      const userId = user?.id ? parseInt(user.id) : null;
-      if (!userId) {
-        console.error('loadUserDesign: No authenticated user');
-        // Clear canvas for fresh start
-        fabricCanvas.canvasRef.clear();
-        fabricCanvas.canvasRef.backgroundColor = 'transparent';
-        fabricCanvas.canvasRef.renderAll();
-        setDesignStatus({ type: 'loaded', message: 'Ready to design' });
+      const response = await fetch(`/api/design/load/${activeVariant.productId}?userId=${user.id}`, {
+        credentials: 'include',
+      });
+      
+      if (response.status === 404) {
+        // No saved design - this is normal, just start fresh
+        console.log('No saved design found - starting fresh');
         isLoadingDesignRef.current = false;
         return;
       }
       
-      const response = await fetch(`/api/design/load/${activeVariant.productId}?userId=${userId}`, {
-        credentials: 'include',
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
-        if (response.status === 404) {
-          // No saved design in database - start with fresh canvas
-          console.log('No saved design found - starting fresh');
-          fabricCanvas.canvasRef.clear();
-          fabricCanvas.canvasRef.backgroundColor = 'transparent';
-          fabricCanvas.canvasRef.renderAll();
-          setDesignStatus({ type: 'loaded', message: 'Ready to design' });
-          isLoadingDesignRef.current = false;
-          return;
-        }
-        throw new Error('Failed to load design');
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        console.error('Server returned HTML instead of JSON. Is the backend running?');
-        throw new Error('Server error - backend may not be running');
+        console.warn('Failed to load design, status:', response.status);
+        isLoadingDesignRef.current = false;
+        return;
       }
       
       const result = await response.json();
       const data = result.data;
+      
+      if (!data) {
+        console.log('No design data in response');
+        isLoadingDesignRef.current = false;
+        return;
+      }
       
       // Restore print area preset if saved
       if (data.printAreaPreset) {
@@ -709,55 +801,18 @@ export function CustomDesignPage() {
       
       if (canvasData && fabricCanvas.canvasRef) {
         fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
-          console.log('JSON loaded from database, forcing render...');
-          
-          // Force multiple render cycles to ensure visibility
           fabricCanvas.canvasRef?.renderAll();
-          fabricCanvas.updateCanvasObjects?.();
-          
-          // Use requestAnimationFrame to ensure DOM is ready
-          requestAnimationFrame(() => {
-            fabricCanvas.canvasRef?.requestRenderAll();
-            
-            // Double-check with delayed render
-            setTimeout(() => {
-              fabricCanvas.canvasRef?.requestRenderAll();
-              console.log('Design loaded successfully from database');
-              setDesignStatus({ type: 'loaded', message: 'Design loaded successfully' });
-            }, 100);
-          });
-          
-          setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
+          console.log('✅ Design loaded from database');
+          toast.success('Previous design restored');
         });
-      } else {
-        // No canvas data but variant is loaded
-        console.log('Variant loaded, no design data yet');
-        setDesignStatus({ type: 'loaded', message: 'Variant loaded' });
-        isLoadingDesignRef.current = false;
       }
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('Load error:', error);
       
-      // ALWAYS clear canvas and stop loading on ANY error
-      fabricCanvas.canvasRef.clear();
-      fabricCanvas.canvasRef.backgroundColor = 'transparent';
-      fabricCanvas.canvasRef.renderAll();
-      setDesignStatus({ type: 'loaded', message: 'Ready to design' });
       isLoadingDesignRef.current = false;
-      
-      // Show appropriate toast based on error type
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          toast.warning('Connection timeout - starting fresh');
-        } else if (error.message.includes('Server error') || error.message.includes('backend')) {
-          toast.warning('Could not connect to server - working offline');
-        } else {
-          toast.info('Starting with fresh canvas');
-        }
-      }
+    } catch (error) {
+      console.warn('Error loading design (will start fresh):', error);
+      isLoadingDesignRef.current = false;
     }
-  }, [activeVariant, selectedView, fabricCanvas.canvasRef, setPrintAreaSize, user]);
+  }, [activeVariant?.productId, selectedView, fabricCanvas.canvasRef, user?.id, setPrintAreaSize]);
 
   // Fetch all saved designs for user
   const fetchSavedDesigns = useCallback(async () => {
@@ -765,8 +820,7 @@ export function CustomDesignPage() {
     
     setIsLoadingDesigns(true);
     try {
-      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
-      const response = await fetch(`${API_BASE}/api/saved-designs/all?userId=${user.id}`);
+      const response = await fetch(`/api/saved-designs/all?userId=${user.id}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch saved designs');
@@ -832,9 +886,7 @@ export function CustomDesignPage() {
     if (!user?.id) return;
     
     try {
-      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
-      
-      const response = await fetch(`${API_BASE}/api/saved-designs/${designId}`, {
+      const response = await fetch(`/api/saved-designs/${designId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id })
@@ -1055,7 +1107,7 @@ export function CustomDesignPage() {
     const objects = selection._objects;
     
     if (objects.length < 2) {
-      console.log('Need at least 2 objects to group');
+      toast.error('Select at least 2 objects to group');
       return;
     }
     
@@ -1339,7 +1391,7 @@ export function CustomDesignPage() {
   }, [handleKeyDown, handleKeyUp]);
 
   // Note: localStorage backup REMOVED for security - localStorage persists across user accounts
-  // All data now saved to database only (manual save or auto-save when 2+ objects)
+  // All data now saved to database only (manual save or auto-save when 1+ objects)
 
   // Force save on window close/refresh
   useEffect(() => {
@@ -1363,7 +1415,7 @@ export function CustomDesignPage() {
     };
   }, [fabricCanvas.canvasRef, activeVariant, handleSave, designStatus.type]);
 
-  // Load saved design on mount
+  // Load saved design on mount or when variant/view changes
   useEffect(() => {
     console.log('Load effect triggered:', { 
       hasVariant: !!activeVariant, 
@@ -1380,13 +1432,13 @@ export function CustomDesignPage() {
       return;
     }
     
-    if (activeVariant && fabricCanvas.canvasRef) {
+    // Only try to load if logged in and have a variant
+    if (activeVariant && fabricCanvas.canvasRef && user) {
       console.log('Calling loadUserDesign...');
       loadUserDesign();
-    } else {
-      console.log('Skipped loadUserDesign - missing variant or canvas');
     }
-  }, [activeVariant?.productId, selectedView, fabricCanvas.canvasRef, loadUserDesign, isHydrating, user]); // Added isHydrating and user
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeVariant?.productId, selectedView, isHydrating, user?.id]); // Intentionally minimal deps
   
   // Centralized toast notification handler - shows messages based on status changes
   useEffect(() => {
@@ -1425,12 +1477,181 @@ export function CustomDesignPage() {
     setActiveTab('layers');
   }, []); // Run only on mount
   
+  // Handle returning from preview page - restore design state
+  useEffect(() => {
+    const state = location.state as {
+      returnFromPreview?: boolean;
+      designData?: string;
+      variant?: {
+        id: string;
+        productId: string;
+        productName: string;
+        variantName: string;
+        size: string;
+        image: string;
+        retailPrice: number;
+        totalPrice: number;
+      };
+      view?: 'front' | 'back';
+      printAreaSize?: string;
+    } | null;
+
+    if (!state?.returnFromPreview || !state.designData || !state.variant) {
+      return;
+    }
+
+    console.log('🔄 Returning from preview, restoring design state');
+    
+    // Restore variant
+    setActiveVariant({
+      id: state.variant.id,
+      productId: state.variant.productId,
+      productName: state.variant.productName,
+      variantName: state.variant.variantName,
+      size: state.variant.size,
+      printOption: state.view === 'front' ? 'front' : 'back',
+      image: state.variant.image,
+      retailPrice: state.variant.retailPrice,
+      totalPrice: state.variant.totalPrice,
+    });
+    
+    // Restore size
+    setSelectedSize(state.variant.size);
+    
+    // Restore view
+    if (state.view) {
+      setSelectedView(state.view);
+    }
+    
+    // Restore print area size
+    if (state.printAreaSize) {
+      const validPresets: PrintAreaPreset[] = ['A4', 'Letter', 'Legal', 'Square', 'Custom'];
+      if (validPresets.includes(state.printAreaSize as PrintAreaPreset)) {
+        setPrintAreaSize(state.printAreaSize as PrintAreaPreset);
+      }
+    }
+    
+    // Restore canvas data after a short delay to ensure canvas is ready
+    const restoreCanvas = () => {
+      if (!fabricCanvas.canvasRef || !state.designData) {
+        console.log('Canvas not ready, retrying...');
+        setTimeout(restoreCanvas, 100);
+        return;
+      }
+      
+      try {
+        isLoadingDesignRef.current = true;
+        const canvasData = JSON.parse(state.designData);
+        fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
+          fabricCanvas.canvasRef?.renderAll();
+          console.log('✅ Canvas restored from preview state');
+          isLoadingDesignRef.current = false;
+        });
+      } catch (error) {
+        console.error('Failed to restore canvas from preview:', error);
+        isLoadingDesignRef.current = false;
+      }
+    };
+    
+    // Start restore after component mounts
+    setTimeout(restoreCanvas, 200);
+    
+  }, [location.state, fabricCanvas.canvasRef]);
+  
   // Get category from navigation state
   const selectedCategory = location.state?.category || 'T-Shirt - Round Neck';
   const selectedProductName = location.state?.productName || '';
 
   // Fetch all customizable products
   const { products: allProducts, loading: productsLoading, error: productsError } = useCustomizableProducts();
+
+  // Load last-used variant ONLY on genuine page refresh (not category navigation)
+  useEffect(() => {
+    const loadLastUsedVariant = async () => {
+      // Wait for auth and products to load
+      if (isHydrating || !user || productsLoading || !allProducts || allProducts.length === 0) {
+        return;
+      }
+
+      // If variant already selected, skip
+      if (activeVariant) {
+        return;
+      }
+
+      // CRITICAL: Only auto-load if user came from page refresh, NOT from navigation
+      // If location.state exists, user navigated here intentionally - don't auto-load
+      if (location.state?.category || location.state?.productName || location.state?.returnFromPreview) {
+        console.log('🚫 Skipping auto-load - user navigated here intentionally');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/design/load/last-used?userId=${user.id}`, {
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          const lastProductId = result.data?.customizableProductId;
+          
+          if (lastProductId) {
+            console.log('🔄 Loading last-used variant from page refresh:', lastProductId);
+            
+            // Find the product in the loaded products
+            const product = allProducts.find(p => parseInt(p.id) === lastProductId);
+            if (product) {
+              console.log('✅ Product found:', product.name, 'Category:', product.category);
+              
+              // Get product image with proper fallback
+              const frontImage = product.images?.find((img: any) => img.type === 'front');
+              const backImage = product.images?.find((img: any) => img.type === 'back');
+              const imageUrl = frontImage?.url || backImage?.url || product.images?.[0]?.url || '/placeholder-product.png';
+              
+              const variant: ClothingVariant = {
+                id: product.id.toString(),
+                productId: product.id.toString(),
+                productName: product.name,
+                variantName: product.variant?.name || product.color?.name || product.name,
+                baseProduct: product.name,
+                image: imageUrl,
+                size: result.data.selectedSize || 'M',
+                color: product.color?.name || 'Default',
+                colorCode: product.color?.hexCode || '#FFFFFF',
+                price: product.retailPrice || 0,
+                retailPrice: product.retailPrice || 0,
+                totalPrice: product.retailPrice || 0,
+                category: product.category || 'T-Shirt',
+                printOption: result.data.selectedPrintOption || 'none',
+                isAvailable: true
+              };
+
+              setActiveVariant(variant);
+              setSelectedSize(result.data.selectedSize || 'M');
+              
+              // Validate printAreaPreset - ensure it's a valid key in PRINT_AREA_PRESETS
+              const validPresets: PrintAreaPreset[] = ['A4', 'Letter', 'Legal', 'Square', 'Custom'];
+              const presetFromAPI = result.data.printAreaPreset;
+              const validPreset = validPresets.includes(presetFromAPI as PrintAreaPreset) 
+                ? (presetFromAPI as PrintAreaPreset) 
+                : 'Letter';
+              setPrintAreaSize(validPreset);
+              
+              setProductName(product.name);
+              setProductCategory(product.category || 'T-Shirt');
+              
+              console.log('✅ Variant restored from page refresh:', variant.productName, 'Print Area:', validPreset);
+            } else {
+              console.warn('❌ Product not found in allProducts. ID:', lastProductId);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load last-used variant:', error);
+      }
+    };
+
+    loadLastUsedVariant();
+  }, [isHydrating, user, productsLoading, allProducts, activeVariant, location.state, selectedCategory]);
 
   // Filter products by exact category match
   const categoryVariants = useMemo(() => {
@@ -1565,11 +1786,15 @@ export function CustomDesignPage() {
       const formData = new FormData();
       formData.append('image', designBlob, 'custom-design.png');
       
-      const uploadResponse = await fetch(`${import.meta.env['VITE_API_BASE'] || ''}/api/custom-design/upload-preview`, {
+      const uploadResponse = await fetch(`/api/custom-design/upload-preview`, {
         method: 'POST',
         body: formData,
         credentials: 'include',
       });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload design thumbnail');
+      }
       
       const uploadResult = await uploadResponse.json();
       const thumbnailUrl = uploadResult?.url || '';
@@ -2237,25 +2462,14 @@ export function CustomDesignPage() {
 
           <div className="flex items-center gap-2">
             <Button
-              variant={'default'}
+              variant="default"
               size="sm"
-              className="bg-gray-800 hover:bg-gray-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handlePreview}
+              disabled={!activeVariant || !fabricCanvas.canvasRef}
+              title="Preview your design"
             >
-              Edit
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate('/custom-design-preview', {
-                state: {
-                  activeVariant,
-                  canvasData: fabricCanvas.canvasRef?.toJSON(),
-                  view: selectedView
-                }
-              })}
-              className="hover:bg-gray-100 hover:text-gray-900"
-              disabled={!activeVariant}
-            >
+              <Eye className="size-4 mr-1.5" />
               Preview
             </Button>
             <Button
@@ -3443,7 +3657,7 @@ export function CustomDesignPage() {
             {/* Front/Back Toggle - At bottom with transparent container */}
             <div className="py-4 flex items-center justify-center gap-3">
               <button
-                onClick={() => setSelectedView('front')}
+                onClick={() => handleViewSwitch('front')}
                 className={`px-6 py-2.5 rounded-full transition-all shadow-md ${
                   selectedView === 'front'
                     ? 'bg-gray-800 text-white'
@@ -3453,7 +3667,7 @@ export function CustomDesignPage() {
                 Front side
               </button>
               <button
-                onClick={() => setSelectedView('back')}
+                onClick={() => handleViewSwitch('back')}
                 className={`px-6 py-2.5 rounded-full transition-all shadow-md ${
                   selectedView === 'back'
                     ? 'bg-gray-800 text-white'
@@ -3499,11 +3713,11 @@ export function CustomDesignPage() {
               size="sm"
               className="h-8 px-3 bg-blue-600 hover:bg-blue-700"
               onClick={handlePreview}
-              disabled={!activeVariant}
-              title="Preview & Save Design"
+              disabled={!activeVariant || !fabricCanvas.canvasRef}
+              title="Preview your design"
             >
               <Eye className="size-4 mr-1.5" />
-              Preview & Save
+              Preview
             </Button>
             
             {/* Auto-save Status Indicator */}

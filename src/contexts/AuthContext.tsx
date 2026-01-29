@@ -30,7 +30,8 @@ interface AuthProviderProps {
   onOpenLoginModal: () => void;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+// Use empty string to make requests go through Vite proxy
+const API_BASE = '';
 
 export function AuthProvider({ children, onOpenLoginModal }: AuthProviderProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);

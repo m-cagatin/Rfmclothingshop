@@ -40,12 +40,23 @@ export function CustomDesignPreviewPage() {
   useEffect(() => {
     const state = location.state as DesignState;
     
+    console.log('🎨 Preview page loaded, checking state:', {
+      hasState: !!state,
+      hasDesignData: !!state?.designData,
+      hasVariant: !!state?.variant,
+      designDataLength: state?.designData?.length || 0,
+      variantName: state?.variant?.productName || 'none'
+    });
+    
     if (!state || !state.designData || !state.variant) {
-      toast.error('No design data found');
-      navigate('/custom-design');
+      console.error('❌ Missing required state data, redirecting back');
+      toast.error('Failed to load preview. Please try again.');
+      // Use replace to avoid adding to history
+      navigate('/custom-design', { replace: true });
       return;
     }
 
+    console.log('✅ State valid, loading preview');
     setDesignState(state);
     setIsLoading(false);
   }, [location.state, navigate]);
@@ -111,11 +122,22 @@ export function CustomDesignPreviewPage() {
     }
   };
 
-  // Handle edit design
+  // Handle edit design - pass all design data back
   const handleEdit = () => {
+    if (!designState) {
+      navigate('/custom-design');
+      return;
+    }
+    
+    // Pass all design state back to CustomDesignPage
     navigate('/custom-design', {
       state: {
         returnFromPreview: true,
+        designData: designState.designData,
+        variant: designState.variant,
+        view: designState.view,
+        printAreaSize: designState.printAreaSize,
+        previewImage: designState.previewImage,
       },
     });
   };
@@ -140,9 +162,8 @@ export function CustomDesignPreviewPage() {
     setIsSaving(true);
 
     try {
-      const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
-      
-      const response = await fetch(`${API_BASE}/api/saved-designs/save`, {
+      // Use relative path to go through proxy
+      const response = await fetch(`/api/saved-designs/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

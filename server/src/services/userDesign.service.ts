@@ -135,6 +135,38 @@ export class UserDesignService {
   }
 
   /**
+   * Get the most recently edited design for a user
+   */
+  static async getLastUsedDesign(userId: string): Promise<LoadDesignData | null> {
+    const design = await prisma.user_current_design.findFirst({
+      where: {
+        user_id: userId
+      },
+      orderBy: {
+        last_saved_at: 'desc'
+      }
+    });
+
+    if (!design) {
+      return null;
+    }
+
+    return {
+      id: design.id,
+      userId: design.user_id,
+      customizableProductId: design.customizable_product_id,
+      selectedSize: design.selected_size,
+      selectedPrintOption: design.selected_print_option,
+      printAreaPreset: design.print_area_preset,
+      frontCanvasJson: design.front_canvas_json,
+      backCanvasJson: design.back_canvas_json,
+      lastSavedAt: design.last_saved_at,
+      createdAt: design.created_at,
+      updatedAt: design.updated_at
+    };
+  }
+
+  /**
    * Get all saved designs for a user with product information
    */
   static async getAllUserDesigns(userId: string): Promise<any[]> {
