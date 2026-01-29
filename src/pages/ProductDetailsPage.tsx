@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useCatalogProduct } from '../hooks/useCatalogProduct';
 
 interface ProductDetailsPageProps {
-  onAddToCart: (id: string, quantity?: number) => void;
+  onAddToCart: (id: string, quantity?: number, size?: string, color?: string) => void;
   onToggleFavorite: (id: string) => void;
   favorites: Array<{ id: string }>;
 }
@@ -96,7 +96,7 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
     }
 
     requireAuth(() => {
-      onAddToCart(product.id, quantity);
+      onAddToCart(product.id, quantity, selectedSize);
       toast.success(`${quantity} ${quantity > 1 ? 'items' : 'item'} added to cart!`);
     });
   };
@@ -123,7 +123,7 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
     }
 
     requireAuth(() => {
-      onAddToCart(product.id, quantity);
+      onAddToCart(product.id, quantity, selectedSize);
       toast.success('Proceeding to checkout...');
       setTimeout(() => navigate('/checkout'), 500);
     });

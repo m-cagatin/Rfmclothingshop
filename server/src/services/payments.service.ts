@@ -213,9 +213,6 @@ export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentRe
           size: item.size || null,
           color: item.color || null,
           customization_data: item.customizationData ? item.customizationData : undefined,
-          catalog_clothing: {
-            connect: { product_id: productId }
-          }
         };
       })
     );

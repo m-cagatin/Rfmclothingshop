@@ -5,14 +5,14 @@ interface CatalogProduct {
   product_name: string;
   category: string;
   gender: string;
-  base_price: number;
+  base_price: number | string; // Database returns string (Decimal type)
   sizes: string[];
   material: string;
   stock_quantity: number;
   status: string;
   created_at: string;
   updated_at: string;
-  images: Array<{
+  product_images: Array<{
     image_id: number;
     image_url: string;
     display_order: number;
@@ -50,7 +50,8 @@ export function useCatalogProduct(productId: string | undefined) {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(`/api/catalog-products/${productId}`);
+        const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
+        const response = await fetch(`${API_BASE}/api/catalog-products/${productId}`);
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -62,13 +63,13 @@ export function useCatalogProduct(productId: string | undefined) {
         const data: CatalogProduct = await response.json();
 
         // Sort images by display_order
-        const sortedImages = [...data.images].sort((a, b) => a.display_order - b.display_order);
+        const sortedImages = [...data.product_images].sort((a, b) => a.display_order - b.display_order);
 
         // Transform to match the component's expected format
         const transformed: TransformedProduct = {
           id: data.product_id.toString(),
           name: data.product_name,
-          price: data.base_price,
+          price: typeof data.base_price === 'string' ? parseFloat(data.base_price) : data.base_price,
           image: sortedImages[0]?.image_url || '',
           backImage: sortedImages[1]?.image_url,
           additionalImages: sortedImages.slice(2).map(img => img.image_url),

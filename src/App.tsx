@@ -117,7 +117,7 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
     location.pathname !== "/custom-design-preview" &&
     !location.pathname.startsWith("/admin");
 
-  const handleAddToCart = async (productId: string, quantity: number = 1) => {
+  const handleAddToCart = async (productId: string, quantity: number = 1, size?: string, color?: string) => {
     // Try to get product from catalog API first
     try {
       const response = await fetch(`http://localhost:4000/api/catalog-products/${productId}`);
@@ -129,7 +129,9 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
           catalogProduct.base_price, 
           catalogProduct.product_images[0]?.image_url || '', 
           catalogProduct.category, 
-          quantity
+          quantity,
+          size,
+          color
         );
         return;
       }
@@ -140,7 +142,7 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
     // Fallback to mock product data
     const product = getProductById(productId);
     if (!product) return;
-    addToCartHook(productId, product.name, product.price, product.image, product.category, quantity);
+    addToCartHook(productId, product.name, product.price, product.image, product.category, quantity, size, color);
   };
 
   const handleToggleFavorite = async (productId: string) => {
