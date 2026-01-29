@@ -15,6 +15,7 @@ import paymentsRoutes from './routes/payments.routes';
 import ordersRoutes from './routes/orders.routes';
 import cashflowRoutes from './routes/cashflow.routes';
 import inventoryRoutes from './routes/inventory.routes';
+import catalogProductsRoutes from './routes/catalogProducts.routes';
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/cashflow', cashflowRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/catalog-products', catalogProductsRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });

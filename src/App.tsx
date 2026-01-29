@@ -17,6 +17,7 @@ import { TrackOrderPage } from "./pages/TrackOrderPage";
 import { PaymentVerificationPage } from "./pages/admin/PaymentVerificationPage";
 import { OrdersPage } from "./pages/admin/OrdersPage";
 import { CustomizableProductsPage } from "./pages/admin/CustomizableProductsPage";
+import { CatalogProductsPage } from "./pages/admin/CatalogProductsPage";
 import { CanvasResourcesPage } from "./pages/admin/CanvasResourcesPage";
 import { EmployeesPage } from "./pages/admin/EmployeesPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
@@ -116,13 +117,52 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
     location.pathname !== "/custom-design-preview" &&
     !location.pathname.startsWith("/admin");
 
-  const handleAddToCart = (productId: string, quantity: number = 1) => {
+  const handleAddToCart = async (productId: string, quantity: number = 1) => {
+    // Try to get product from catalog API first
+    try {
+      const response = await fetch(`http://localhost:4000/api/catalog-products/${productId}`);
+      if (response.ok) {
+        const catalogProduct = await response.json();
+        addToCartHook(
+          catalogProduct.product_id.toString(), 
+          catalogProduct.product_name, 
+          catalogProduct.base_price, 
+          catalogProduct.product_images[0]?.image_url || '', 
+          catalogProduct.category, 
+          quantity
+        );
+        return;
+      }
+    } catch (error) {
+      console.log('Not a catalog product, checking mock data');
+    }
+    
+    // Fallback to mock product data
     const product = getProductById(productId);
     if (!product) return;
     addToCartHook(productId, product.name, product.price, product.image, product.category, quantity);
   };
 
-  const handleToggleFavorite = (productId: string) => {
+  const handleToggleFavorite = async (productId: string) => {
+    // Try to get product from catalog API first
+    try {
+      const response = await fetch(`http://localhost:4000/api/catalog-products/${productId}`);
+      if (response.ok) {
+        const catalogProduct = await response.json();
+        toggleFavorite(
+          catalogProduct.product_id.toString(), 
+          catalogProduct.product_name, 
+          catalogProduct.base_price, 
+          catalogProduct.product_images[0]?.image_url || '', 
+          catalogProduct.category
+        );
+        return;
+      }
+    } catch (error) {
+      console.log('Not a catalog product, checking mock data');
+    }
+    
+    // Fallback to mock product data
     const product = getProductById(productId);
     if (!product) return;
     toggleFavorite(productId, product.name, product.price, product.image, product.category);
@@ -292,7 +332,7 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
               path="/admin/products"
               element={
                 <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
-                  <CustomizableProductsPage />
+                  <CatalogProductsPage />
                 </AdminRoute>
               }
             />

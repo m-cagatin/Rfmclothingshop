@@ -7,6 +7,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Label } from '../components/ui/label';
 import { Slider } from '../components/ui/slider';
 import { FavoriteItem } from '../components/FavoritesDrawer';
+import { useCatalogProductsCustomer } from '../hooks/useCatalogProductsCustomer';
 
 interface NewArrivalsPageProps {
   onAddToCart: (productId: string) => void;
@@ -22,306 +23,40 @@ interface Product {
   category: string;
   isNew: boolean;
   section?: string;
+  gender?: string;
 }
 
 export function NewArrivalsPage({ onAddToCart, onToggleFavorite, favorites }: NewArrivalsPageProps) {
+  const { products: allProducts, loading } = useCatalogProductsCustomer(); // Get all products
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
 
-  // Mock product data - all new arrivals
-  const newProducts: Product[] = [
-    {
-      id: '1',
-      name: 'Classic White T-Shirt - Round Neck',
-      price: 200,
-      image: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'T-Shirts',
-      isNew: true,
-      section: 'New Arrivals',
-    },
-    {
-      id: '2',
-      name: 'Varsity Jacket - Blue & White',
-      price: 600,
-      image: 'https://images.unsplash.com/photo-1761245332312-fddc4f0b5bab?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2YXJzaXR5JTIwamFja2V0JTIwc3RyZWV0fGVufDF8fHx8MTc2Mjk3Nzk3OXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: true,
-      section: 'New Arrivals',
-    },
-    {
-      id: '5',
-      name: 'Premium Black Hoodie',
-      price: 480,
-      image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Hoodies',
-      isNew: true,
-      section: 'New Arrivals',
-    },
-    {
-      id: '6',
-      name: 'Graphic Print Tee',
-      price: 250,
-      image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmFwaGljJTIwdGVlfGVufDF8fHx8MTc2MjkyNDA3NXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'T-Shirts',
-      isNew: true,
-      section: 'New Arrivals',
-    },
-    {
-      id: '7',
-      name: 'Bomber Jacket - Olive',
-      price: 650,
-      image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxib21iZXIlMjBqYWNrZXR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: true,
-      section: 'New Arrivals',
-    },
-    {
-      id: '8',
-      name: 'Minimalist Crew Neck',
-      price: 220,
-      image: 'https://images.unsplash.com/photo-1618354691373-d851c5c3a990?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmV3JTIwbmVjayUyMHRzaGlydHxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'T-Shirts',
-      isNew: true,
-      section: 'New Arrivals',
-    },
-  ];
+  // Filter only new products
+  const newProducts = useMemo(() => allProducts.filter(p => p.isNew), [allProducts]);
 
-  // Men's products
-  const menProducts: Product[] = [
-    {
-      id: 'm1',
-      name: 'Classic White T-Shirt - Round Neck',
-      price: 200,
-      image: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'T-Shirts',
-      isNew: false,
-      section: 'Men',
-    },
-    {
-      id: 'm2',
-      name: 'Varsity Jacket - Blue & White',
-      price: 600,
-      image: 'https://images.unsplash.com/photo-1761245332312-fddc4f0b5bab?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2YXJzaXR5JTIwamFja2V0JTIwc3RyZWV0fGVufDF8fHx8MTc2Mjk3Nzk3OXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: false,
-      section: 'Men',
-    },
-    {
-      id: 'm3',
-      name: 'Oversized Hoodie - Premium Cotton',
-      price: 450,
-      image: 'https://images.unsplash.com/photo-1688111421205-a0a85415b224?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwaG9vZGllfGVufDF8fHx8MTc2Mjk1MjY5MHww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Hoodies',
-      isNew: false,
-      section: 'Men',
-    },
-    {
-      id: 'm4',
-      name: 'Denim Jacket - Classic Blue',
-      price: 550,
-      image: 'https://images.unsplash.com/photo-1657349038547-b18a07fb4329?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkZW5pbSUyMGphY2tldCUyMHN0eWxlfGVufDF8fHx8MTc2MjkzMjg2MXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: false,
-      section: 'Men',
-    },
-    {
-      id: 'm9',
-      name: 'Polo Shirt - Navy Blue',
-      price: 280,
-      image: 'https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwb2xvJTIwc2hpcnQlMjBtZW58ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Shirts',
-      isNew: false,
-      section: 'Men',
-    },
-    {
-      id: 'm10',
-      name: 'Cargo Pants - Black',
-      price: 520,
-      image: 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXJnbyUyMHBhbnRzfGVufDF8fHx8MTc2MjkyNDA3NXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Pants',
-      isNew: false,
-      section: 'Men',
-    },
-  ];
-
-  // Women's products
-  const womenProducts: Product[] = [
-    {
-      id: 'w1',
-      name: 'Elegant Blazer - Black',
-      price: 680,
-      image: 'https://images.unsplash.com/photo-1591369822096-ffd140ec948f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21lbiUyMGJsYXplcnxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Blazers',
-      isNew: false,
-      section: 'Women',
-    },
-    {
-      id: 'w2',
-      name: 'Floral Summer Dress',
-      price: 520,
-      image: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzdW1tZXIlMjBkcmVzcyUyMGZsb3JhbHxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Dresses',
-      isNew: false,
-      section: 'Women',
-    },
-    {
-      id: 'w3',
-      name: 'Casual Knit Sweater',
-      price: 380,
-      image: 'https://images.unsplash.com/photo-1609825488888-3a766db05542?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21lbiUyMHN3ZWF0ZXJ8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Sweaters',
-      isNew: false,
-      section: 'Women',
-    },
-    {
-      id: 'w4',
-      name: 'High-Waist Jeans - Blue',
-      price: 450,
-      image: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21lbiUyMGplYW5zfGVufDF8fHx8MTc2MjkyNDA3NXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jeans',
-      isNew: false,
-      section: 'Women',
-    },
-    {
-      id: 'w5',
-      name: 'Silk Blouse - White',
-      price: 340,
-      image: 'https://images.unsplash.com/photo-1598522325074-042db73aa4e6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21lbiUyMGJsb3VzZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Blouses',
-      isNew: false,
-      section: 'Women',
-    },
-    {
-      id: 'w6',
-      name: 'Midi Skirt - Pleated',
-      price: 420,
-      image: 'https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21lbiUyMHNraXJ0fGVufDF8fHx8MTc2MjkyNDA3NXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Skirts',
-      isNew: false,
-      section: 'Women',
-    },
-  ];
-
-  // Kids' products
-  const kidsProducts: Product[] = [
-    {
-      id: 'k1',
-      name: 'Kids Classic T-Shirt',
-      price: 150,
-      image: 'https://images.unsplash.com/photo-1731267776886-90f90af75eb1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwdC1zaGlydCUyMHdoaXRlfGVufDF8fHx8MTc2Mjk5MDk5MHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'T-Shirts',
-      isNew: false,
-      section: 'Kids',
-    },
-    {
-      id: 'k2',
-      name: 'Kids Polo Shirt - Classic',
-      price: 180,
-      image: 'https://images.unsplash.com/photo-1659779193831-97ccb9fecfeb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwcG9sbyUyMHNoaXJ0fGVufDF8fHx8MTc2MjkzMjQzOHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Shirts',
-      isNew: false,
-      section: 'Kids',
-    },
-    {
-      id: 'k3',
-      name: 'Kids Casual Outfit',
-      price: 280,
-      image: 'https://images.unsplash.com/photo-1759313560190-d160c3567170?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwZmFzaGlvbiUyMGNhc3VhbHxlbnwxfHx8fDE3NjI5OTA5OTF8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Casual',
-      isNew: false,
-      section: 'Kids',
-    },
-    {
-      id: 'k4',
-      name: 'Kids Stylish Wear',
-      price: 320,
-      image: 'https://images.unsplash.com/photo-1695262620869-fedab63bcc41?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaGlsZHJlbiUyMGNsb3RoaW5nJTIwc3R5bGV8ZW58MXx8fHwxNzYyOTkwOTkxfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      category: 'Clothing',
-      isNew: false,
-      section: 'Kids',
-    },
-  ];
-
-  // Unisex products
-  const unisexProducts: Product[] = [
-    {
-      id: '1',
-      name: 'Classic White T-Shirt - Round Neck',
-      price: 200,
-      image: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'T-Shirts',
-      isNew: false,
-      section: 'Unisex',
-    },
-    {
-      id: '2',
-      name: 'Varsity Jacket - Blue & White',
-      price: 600,
-      image: 'https://images.unsplash.com/photo-1761245332312-fddc4f0b5bab?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2YXJzaXR5JTIwamFja2V0JTIwc3RyZWV0fGVufDF8fHx8MTc2Mjk3Nzk3OXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: false,
-      section: 'Unisex',
-    },
-    {
-      id: '3',
-      name: 'Oversized Hoodie - Premium Cotton',
-      price: 450,
-      image: 'https://images.unsplash.com/photo-1688111421205-a0a85415b224?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwaG9vZGllfGVufDF8fHx8MTc2Mjk1MjY5MHww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Hoodies',
-      isNew: false,
-      section: 'Unisex',
-    },
-    {
-      id: '4',
-      name: 'Denim Jacket - Classic Blue',
-      price: 550,
-      image: 'https://images.unsplash.com/photo-1657349038547-b18a07fb4329?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkZW5pbSUyMGphY2tldCUyMHN0eWxlfGVufDF8fHx8MTc2MjkzMjg2MXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: false,
-      section: 'Unisex',
-    },
-    {
-      id: '5',
-      name: 'Premium Black Hoodie',
-      price: 480,
-      image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Hoodies',
-      isNew: false,
-      section: 'Unisex',
-    },
-    {
-      id: '6',
-      name: 'Graphic Print Tee',
-      price: 250,
-      image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxncmFwaGljJTIwdGVlfGVufDF8fHx8MTc2MjkyNDA3NXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'T-Shirts',
-      isNew: false,
-      section: 'Unisex',
-    },
-  ];
-
-  const allProducts = [...newProducts, ...unisexProducts, ...menProducts, ...womenProducts, ...kidsProducts];
-
-  // Get all unique categories
+  // Get all unique categories from new products
   const allCategories = useMemo(() => {
-    const categories = new Set(allProducts.map(p => p.category));
+    const categories = new Set(newProducts.map(p => p.category));
     return Array.from(categories).sort();
-  }, []);
+  }, [newProducts]);
 
-  const sections = ['New Arrivals', 'Men', 'Women', 'Kids', 'Unisex'];
+  const sections = useMemo(() => {
+    const genders = new Set(newProducts.map(p => p.gender || 'Unisex'));
+    return Array.from(genders).sort();
+  }, [newProducts]);
 
   // Filter products
   const filteredProducts = useMemo(() => {
-    return allProducts.filter(product => {
+    return newProducts.filter(product => {
       // Category filter
       if (selectedCategories.length > 0 && !selectedCategories.includes(product.category)) {
         return false;
       }
 
       // Section filter
-      if (selectedSections.length > 0 && !selectedSections.includes(product.section || '')) {
+      if (selectedSections.length > 0 && !selectedSections.includes(product.gender || 'Unisex')) {
         return false;
       }
 
@@ -332,19 +67,7 @@ export function NewArrivalsPage({ onAddToCart, onToggleFavorite, favorites }: Ne
 
       return true;
     });
-  }, [selectedCategories, selectedSections, priceRange, allProducts]);
-
-  // Group filtered products by section
-  const filteredBySection = useMemo(() => {
-    const grouped = {
-      'New Arrivals': filteredProducts.filter(p => p.section === 'New Arrivals'),
-      'Men': filteredProducts.filter(p => p.section === 'Men'),
-      'Women': filteredProducts.filter(p => p.section === 'Women'),
-      'Kids': filteredProducts.filter(p => p.section === 'Kids'),
-      'Unisex': filteredProducts.filter(p => p.section === 'Unisex'),
-    };
-    return grouped;
-  }, [filteredProducts]);
+  }, [selectedCategories, selectedSections, priceRange, newProducts]);
 
   const toggleCategory = (category: string) => {
     setSelectedCategories(prev =>
@@ -369,6 +92,15 @@ export function NewArrivalsPage({ onAddToCart, onToggleFavorite, favorites }: Ne
   };
 
   const hasActiveFilters = selectedCategories.length > 0 || selectedSections.length > 0 || priceRange[0] !== 0 || priceRange[1] !== 1000;
+
+  // Show loading state after all hooks are defined
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Loading products...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -443,109 +175,28 @@ export function NewArrivalsPage({ onAddToCart, onToggleFavorite, favorites }: Ne
         </section>
       )}
 
-      {/* New Arrivals Section */}
-      {filteredBySection['New Arrivals'].length > 0 && (
-        <section className="container mx-auto px-4 py-12 md:px-6">
-          <div className="mb-6">
-            <h2 className="mb-2">New Arrivals</h2>
-            <p className="text-gray-600">Fresh styles just dropped</p>
-          </div>
+      {/* New Arrivals Grid */}
+      <section className="container mx-auto px-4 py-12 md:px-6">
+        {filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredBySection['New Arrivals'].map((product) => (
+            {filteredProducts.map((product) => (
               <ProductCard
                 key={product.id}
                 {...product}
                 onAddToCart={onAddToCart}
+                onToggleFavorite={onToggleFavorite}
+                isFavorited={favorites?.some(fav => fav.id === product.id)}
               />
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Men's Section */}
-      {filteredBySection['Men'].length > 0 && (
-        <section className="container mx-auto px-4 py-12 md:px-6 border-t">
-          <div className="mb-6">
-            <h2 className="mb-2">Men's Collection</h2>
-            <p className="text-gray-600">Stylish and comfortable clothing for men</p>
+        ) : (
+          <div className="text-center py-20">
+            <h3 className="mb-2">No new arrivals found</h3>
+            <p className="text-gray-600 mb-6">Try adjusting your filters to see more results</p>
+            <Button onClick={clearFilters}>Clear all filters</Button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredBySection['Men'].map((product) => (
-              <ProductCard
-                key={product.id}
-                {...product}
-                onAddToCart={onAddToCart}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Women's Section */}
-      {filteredBySection['Women'].length > 0 && (
-        <section className="container mx-auto px-4 py-12 md:px-6 border-t">
-          <div className="mb-6">
-            <h2 className="mb-2">Women's Collection</h2>
-            <p className="text-gray-600">Elegant and trendy clothing for women</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredBySection['Women'].map((product) => (
-              <ProductCard
-                key={product.id}
-                {...product}
-                onAddToCart={onAddToCart}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Kids Section */}
-      {filteredBySection['Kids'].length > 0 && (
-        <section className="container mx-auto px-4 py-12 md:px-6 border-t">
-          <div className="mb-6">
-            <h2 className="mb-2">Kids' Collection</h2>
-            <p className="text-gray-600">Fun and comfortable clothing for kids</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredBySection['Kids'].map((product) => (
-              <ProductCard
-                key={product.id}
-                {...product}
-                onAddToCart={onAddToCart}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Unisex Section */}
-      {filteredBySection['Unisex'].length > 0 && (
-        <section className="container mx-auto px-4 py-12 md:px-6 border-t">
-          <div className="mb-6">
-            <h2 className="mb-2">Unisex Collection</h2>
-            <p className="text-gray-600">Stylish and comfortable clothing for everyone</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredBySection['Unisex'].map((product) => (
-              <ProductCard
-                key={product.id}
-                {...product}
-                onAddToCart={onAddToCart}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* No Results */}
-      {filteredProducts.length === 0 && (
-        <section className="container mx-auto px-4 py-20 md:px-6 text-center">
-          <h3 className="mb-2">No products found</h3>
-          <p className="text-gray-600 mb-6">Try adjusting your filters to see more results</p>
-          <Button onClick={clearFilters}>Clear all filters</Button>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* Filter Drawer */}
       <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>

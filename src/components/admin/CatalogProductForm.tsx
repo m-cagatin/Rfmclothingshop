@@ -17,13 +17,13 @@ import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Badge } from '../ui/badge';
 import { ImageUploadZoneDeferred } from './ImageUploadZoneDeferred';
 import { VariantImageUploadZoneDeferred } from './VariantImageUploadZoneDeferred';
-import { CustomizableProduct, ProductImage, ProductImageFile, VariantSample } from '../../types/customizableProduct';
+import { CatalogProduct, ProductImage, ProductImageFile, VariantSample } from '../../types/catalogProduct';
 import { parseColorInput } from '../../utils/colorUtils';
 import { CloudinaryFolder, uploadToCloudinary, deleteImage } from '../../services/cloudinary';
 
-interface CustomizableProductFormProps {
-  product?: CustomizableProduct;
-  onSave: (product: Omit<CustomizableProduct, 'id' | 'createdAt' | 'updatedAt'>) => void;
+interface CatalogProductFormProps {
+  product?: CatalogProduct;
+  onSave: (product: Omit<CatalogProduct, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onCancel: () => void;
 }
 
@@ -99,13 +99,13 @@ const getAvailableSizes = (category: string, type: string): string[] => {
   return ADULT_TOP_SIZES;
 };
 
-export function CustomizableProductForm({ product, onSave, onCancel }: CustomizableProductFormProps) {
+export function CatalogProductForm({ product, onSave, onCancel }: CatalogProductFormProps) {
   // Generate a temporary product code for new products (for Cloudinary organization)
   const [productCode] = useState<string>(
     product?.id ? `CP${String(product.id).padStart(6, '0')}` : `TEMP${Date.now()}`
   );
 
-  const [formData, setFormData] = useState<Omit<CustomizableProduct, 'id' | 'createdAt' | 'updatedAt'>>({
+  const [formData, setFormData] = useState<Omit<CatalogProduct, 'id' | 'createdAt' | 'updatedAt'>>({
     category: product?.category || '',
     name: product?.name || '',
     type: product?.type || '',
@@ -226,7 +226,8 @@ Click OK to upload images and save to database.
 
     // Step 4: Upload images and save
     setIsSaving(true);
-    const uploadedImages: ProductImage[] = [...formData.images]; // Keep existing images
+    // DON'T keep old images - we're replacing all of them
+    const uploadedImages: ProductImage[] = [];
     const uploadedPublicIds: string[] = [];
 
     try {
@@ -259,7 +260,7 @@ Click OK to upload images and save to database.
           url: result.url,
           publicId: result.publicId,
           type: 'back',
-          displayOrder: 1
+          displayOrder: 2
         });
         uploadedPublicIds.push(result.publicId);
       }
@@ -314,11 +315,15 @@ Click OK to upload images and save to database.
         variant: variantData
       };
 
+      console.log('Saving product data:', JSON.stringify(productData, null, 2));
       await onSave(productData);
+      console.log('Product saved successfully!');
       // Success - parent component will handle close
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Save failed:', error);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
       
       // Rollback: Delete uploaded images
       for (const publicId of uploadedPublicIds) {
@@ -329,7 +334,7 @@ Click OK to upload images and save to database.
         }
       }
       
-      alert('Failed to save product. Uploaded images have been cleaned up. Please try again.');
+      alert(`Failed to save product: ${error.message || 'Unknown error'}. Uploaded images have been cleaned up. Please try again.`);
       setIsSaving(false);
     }
   };
@@ -340,7 +345,7 @@ Click OK to upload images and save to database.
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-xl font-semibold">
-            {product ? 'Edit Product' : 'Add New Customizable Product'}
+            {product ? 'Edit Product' : 'Add New Catalog Product'}
           </h2>
           <Button variant="ghost" size="icon" onClick={onCancel}>
             <X className="size-5" />
@@ -569,7 +574,7 @@ Click OK to upload images and save to database.
                 onChange={(value) => {
                   setPendingImages(prev => ({ ...prev, front: value || undefined }));
                 }}
-                folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_FRONT}
+                folder={CloudinaryFolder.CATALOG_PRODUCTS_FRONT}
                 imageType="front"
                 displayOrder={1}
                 productCode={productCode}
@@ -583,7 +588,7 @@ Click OK to upload images and save to database.
                 onChange={(value) => {
                   setPendingImages(prev => ({ ...prev, back: value || undefined }));
                 }}
-                folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_BACK}
+                folder={CloudinaryFolder.CATALOG_PRODUCTS_BACK}
                 imageType="back"
                 displayOrder={1}
                 productCode={productCode}
@@ -602,7 +607,7 @@ Click OK to upload images and save to database.
               <div className="space-y-4">
                 {Array.from({ length: additionalImageSlots }).map((_, idx) => {
                   const existingImage = pendingImages.additional.find(
-                    img => img.displayOrder === idx + 1
+                    img => img.displayOrder === idx + 3
                   );
                   
                   return (
@@ -612,16 +617,16 @@ Click OK to upload images and save to database.
                         value={existingImage}
                         onChange={(value) => {
                           setPendingImages(prev => {
-                            const otherImages = prev.additional.filter(img => img.displayOrder !== idx + 1);
+                            const otherImages = prev.additional.filter(img => img.displayOrder !== idx + 3);
                             return {
                               ...prev,
-                              additional: value ? [...otherImages, { ...value, displayOrder: idx + 1 }] : otherImages
+                              additional: value ? [...otherImages, { ...value, displayOrder: idx + 3 }] : otherImages
                             };
                           });
                         }}
-                        folder={CloudinaryFolder.CUSTOMIZABLE_PRODUCTS_ADDITIONAL}
+                        folder={CloudinaryFolder.CATALOG_PRODUCTS_ADDITIONAL}
                         imageType="additional"
-                        displayOrder={idx + 1}
+                        displayOrder={idx + 3}
                         productCode={productCode}
                         maxSizeMB={10}
                       />
@@ -631,9 +636,9 @@ Click OK to upload images and save to database.
                           variant="outline"
                           onClick={() => {
                             setPendingImages(prev => {
-                              const filtered = prev.additional.filter(img => img.displayOrder !== idx + 1);
+                              const filtered = prev.additional.filter(img => img.displayOrder !== idx + 3);
                               const renumbered = filtered.map(img => 
-                                img.displayOrder > idx + 1 ? { ...img, displayOrder: img.displayOrder - 1 } : img
+                                img.displayOrder > idx + 3 ? { ...img, displayOrder: img.displayOrder - 1 } : img
                               );
                               return { ...prev, additional: renumbered };
                             });
@@ -799,228 +804,6 @@ Click OK to upload images and save to database.
                 </p>
               </div>
             )}
-          </section>
-
-          {/* 5. Product Differentiation */}
-          <section className="space-y-4">
-            <h3 className="font-semibold text-lg border-b pb-2">5. Product Differentiation</h3>
-            
-            <div className="space-y-3">
-              <Label className="text-base">How should this product be differentiated?</Label>
-              <RadioGroup 
-                value={formData.differentiationType} 
-                onValueChange={(value) => setFormData({...formData, differentiationType: value as any})}
-                className="space-y-3"
-              >
-                <div className="flex items-center space-x-3 p-3 border-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors" 
-                     style={{ borderColor: formData.differentiationType === 'none' ? '#3b82f6' : '#e5e7eb' }}>
-                  <RadioGroupItem value="none" id="diff-none" />
-                  <Label htmlFor="diff-none" className="font-medium cursor-pointer flex-1">
-                    None (Plain customizable product)
-                    <span className="block text-xs text-gray-500 font-normal mt-0.5">Customer adds their own design</span>
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-3 p-3 border-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                     style={{ borderColor: formData.differentiationType === 'color' ? '#3b82f6' : '#e5e7eb' }}>
-                  <RadioGroupItem value="color" id="diff-color" />
-                  <Label htmlFor="diff-color" className="font-medium cursor-pointer flex-1">
-                    Single Color Option
-                    <span className="block text-xs text-gray-500 font-normal mt-0.5">Product available in one specific color</span>
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-3 p-3 border-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                     style={{ borderColor: formData.differentiationType === 'variant' ? '#3b82f6' : '#e5e7eb' }}>
-                  <RadioGroupItem value="variant" id="diff-variant" />
-                  <Label htmlFor="diff-variant" className="font-medium cursor-pointer flex-1">
-                    Single Variant Option (pre-designed template)
-                    <span className="block text-xs text-gray-500 font-normal mt-0.5">Product with a specific design/print pattern</span>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            {/* Show color fields only if 'color' is selected */}
-            {formData.differentiationType === 'color' && (
-              <div className="p-5 border-2 border-blue-300 rounded-lg bg-blue-50/50">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="font-semibold">Color Name / Code</Label>
-                    <Input
-                      placeholder="Type: red, #FF0000, or rgb(255,0,0)"
-                      value={formData.color?.name || ''}
-                      onChange={(e) => {
-                        const input = e.target.value;
-                        const parsed = parseColorInput(input);
-                        
-                        if (parsed) {
-                          // Valid color found - update both name and hex
-                          setFormData({ 
-                            ...formData, 
-                            color: { name: parsed.name || input, hexCode: parsed.hex } 
-                          });
-                        } else {
-                          // Just update name as-is
-                          setFormData({ 
-                            ...formData, 
-                            color: { ...(formData.color || { hexCode: '#000000' }), name: input } 
-                          });
-                        }
-                      }}
-                      className="font-mono"
-                    />
-                    <p className="text-xs text-gray-600">
-                      💡 Type color name (e.g., "red"), hex code (#FF0000), or RGB value
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="font-semibold">Color Picker</Label>
-                    <div className="flex gap-2 items-start">
-                      <div className="relative">
-                        <input
-                          type="color"
-                          value={formData.color?.hexCode || '#000000'}
-                          onChange={(e) => {
-                            const hex = e.target.value.toUpperCase();
-                            const parsed = parseColorInput(hex);
-                            setFormData({ 
-                              ...formData, 
-                              color: { 
-                                name: parsed?.name || formData.color?.name || '', 
-                                hexCode: hex 
-                              } 
-                            });
-                          }}
-                          className="h-12 w-12 rounded-lg border-2 border-gray-300 cursor-pointer shadow-sm"
-                        />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <div 
-                            className="w-8 h-8 rounded border-2 border-gray-300 shadow-sm" 
-                            style={{ backgroundColor: formData.color?.hexCode || '#000000' }}
-                          />
-                          <span className="font-mono text-sm font-semibold">
-                            {formData.color?.hexCode || '#000000'}
-                          </span>
-                        </div>
-                        {formData.color?.name && (
-                          <p className="text-xs text-gray-600 capitalize">
-                            Color: {formData.color.name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-600">
-                      🎨 Click to pick a color visually
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Show variant fields only if 'variant' is selected */}
-            {formData.differentiationType === 'variant' && (
-              <div className="space-y-4 p-5 border-2 border-purple-300 rounded-lg bg-purple-50/50">
-                <div className="space-y-2">
-                  <Label className="font-semibold">Variant Name</Label>
-                  <Input
-                    placeholder="e.g., Skull Design, Floral Pattern, Abstract Art"
-                    value={formData.variant?.name || ''}
-                    onChange={(e) => setFormData({ ...formData, variant: { ...(formData.variant || { image: '', publicId: '' }), name: e.target.value } })}
-                  />
-                </div>
-                <VariantImageUploadZoneDeferred
-                  label="Variant Preview Image"
-                  value={pendingImages.variant}
-                  onChange={(value) => {
-                    setPendingImages(prev => ({
-                      ...prev,
-                      variant: value || undefined
-                    }));
-                  }}
-                  productCode={productCode}
-                  maxSizeMB={10}
-                />
-              </div>
-            )}
-          </section>
-
-          {/* 6. Print & Customization */}
-          <section className="space-y-4">
-            <h3 className="font-semibold text-lg border-b pb-2">6. Print & Customization</h3>
-            
-            <div className="space-y-2">
-              <Label>Print Method</Label>
-              <Select value={formData.printMethod} onValueChange={(value: string) => setFormData({ ...formData, printMethod: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select print method" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRINT_METHODS.map((method) => (
-                    <SelectItem key={method} value={method}>{method}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Print Areas</Label>
-              <div className="flex flex-wrap gap-3">
-                {PRINT_AREAS.map((area) => (
-                  <div key={area} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`area-${area}`}
-                      checked={formData.printAreas.includes(area)}
-                      onCheckedChange={() => handlePrintAreaToggle(area)}
-                    />
-                    <label htmlFor={`area-${area}`} className="text-sm cursor-pointer">
-                      {area}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Design Requirements</Label>
-              <Textarea
-                placeholder="e.g., PNG file with transparent background, 300 DPI minimum"
-                value={formData.designRequirements}
-                onChange={(e) => setFormData({ ...formData, designRequirements: e.target.value })}
-                rows={3}
-              />
-            </div>
-          </section>
-
-          {/* 7. Business Details */}
-          <section className="space-y-4">
-            <h3 className="font-semibold text-lg border-b pb-2">7. Business Details</h3>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Turnaround Time</Label>
-                <Input
-                  placeholder="e.g., 3-5 business days"
-                  value={formData.turnaroundTime}
-                  onChange={(e) => setFormData({ ...formData, turnaroundTime: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Minimum Order Quantity</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={formData.minOrderQuantity}
-                  onChange={(e) => setFormData({ ...formData, minOrderQuantity: parseInt(e.target.value) || 0 })}
-                  onBlur={(e) => {
-                    const value = parseInt(e.target.value) || 0;
-                    if (value < 1) {
-                      setFormData({ ...formData, minOrderQuantity: 1 });
-                    }
-                  }}
-                />
-              </div>
-            </div>
           </section>
         </form>
 

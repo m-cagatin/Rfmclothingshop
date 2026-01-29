@@ -6,10 +6,10 @@ import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Eye, Edit, XCircle, Plus, Archive, Trash2, RotateCcw, CheckCircle, Search, Filter, X } from 'lucide-react';
 import { ImageWithFallback } from '../../components/figma/ImageWithFallback';
-import { useCustomizableProducts } from '../../hooks/useCustomizableProducts';
-import { CustomizableProductForm } from '../../components/admin/CustomizableProductForm';
-import { CustomizableProductViewModal } from '../../components/admin/CustomizableProductViewModal';
-import { CustomizableProduct, ProductStatus } from '../../types/customizableProduct';
+import { useCatalogProducts } from '../../hooks/useCatalogProducts';
+import { CatalogProductForm } from '../../components/admin/CatalogProductForm';
+import { CatalogProductViewModal } from '../../components/admin/CatalogProductViewModal';
+import { CatalogProduct, ProductStatus } from '../../types/catalogProduct';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -28,7 +28,7 @@ import {
 } from '../../components/ui/popover';
 import { Badge } from '../../components/ui/badge';
 
-export function CustomizableProductsPage() {
+export function CatalogProductsPage() {
   const {
     products,
     loading,
@@ -40,12 +40,12 @@ export function CustomizableProductsPage() {
     archiveProduct,
     restoreProduct,
     getProductsByStatus,
-  } = useCustomizableProducts();
+  } = useCatalogProducts();
 
   const [activeTab, setActiveTab] = useState<ProductStatus>('active');
   const [showForm, setShowForm] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<CustomizableProduct | null>(null);
-  const [viewingProduct, setViewingProduct] = useState<CustomizableProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<CatalogProduct | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [archiveConfirm, setArchiveConfirm] = useState<string | null>(null);
@@ -99,21 +99,26 @@ export function CustomizableProductsPage() {
     setShowForm(true);
   };
 
-  const handleEditProduct = (product: CustomizableProduct) => {
+  const handleEditProduct = (product: CatalogProduct) => {
     setEditingProduct(product);
     setShowForm(true);
   };
 
-  const handleSaveProduct = (productData: Omit<CustomizableProduct, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (editingProduct) {
-      updateProduct(editingProduct.id, productData);
-      toast.success('Product updated successfully');
-    } else {
-      addProduct(productData);
-      toast.success('Product created successfully');
+  const handleSaveProduct = async (productData: Omit<CatalogProduct, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, productData);
+        toast.success('Product updated successfully');
+      } else {
+        await addProduct(productData);
+        toast.success('Product created successfully');
+      }
+      setShowForm(false);
+      setEditingProduct(null);
+    } catch (error: any) {
+      toast.error(`Failed to save product: ${error.message}`);
+      throw error; // Re-throw so form knows it failed
     }
-    setShowForm(false);
-    setEditingProduct(null);
   };
 
   const handleDeactivate = (productId: string) => {
@@ -163,8 +168,8 @@ export function CustomizableProductsPage() {
     <AdminLayout>
       <div className="p-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">Customizable Products</h1>
-          <p className="text-gray-600">Manage products with custom designs, sizes, and color options</p>
+          <h1 className="text-3xl font-bold mb-2">Catalog Products</h1>
+          <p className="text-gray-600">Manage pre-designed catalog products with fixed pricing</p>
         </div>
 
         {/* Top Bar: Search + Filter + Add Product */}
@@ -517,7 +522,7 @@ export function CustomizableProductsPage() {
 
       {/* Product Form Modal */}
       {showForm && (
-        <CustomizableProductForm
+        <CatalogProductForm
           product={editingProduct || undefined}
           onSave={handleSaveProduct}
           onCancel={() => {
@@ -529,7 +534,7 @@ export function CustomizableProductsPage() {
 
       {/* View Product Modal */}
       {viewingProduct && (
-        <CustomizableProductViewModal
+        <CatalogProductViewModal
           product={viewingProduct}
           onClose={() => setViewingProduct(null)}
         />
