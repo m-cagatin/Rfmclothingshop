@@ -45,7 +45,17 @@ export function useCart() {
     loadCart();
   }, [loadCart]);
 
-  const addToCart = useCallback(async (productId: string, productName: string, price: number, image: string, category: string, quantity: number = 1) => {
+  const addToCart = useCallback(async (
+    productId: string, 
+    productName: string, 
+    price: number, 
+    image: string, 
+    category: string, 
+    quantity: number = 1,
+    size?: string,
+    color?: string,
+    customizationData?: any
+  ) => {
     if (!isLoggedIn) {
       // For non-logged-in users, keep local state (fallback)
       setCartItems((prev) => {
@@ -70,7 +80,17 @@ export function useCart() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ productId, productName, price, image, category, quantity }),
+        body: JSON.stringify({ 
+          productId, 
+          productName, 
+          price, 
+          image, 
+          category, 
+          quantity,
+          size,
+          color,
+          customizationData 
+        }),
       });
       if (res.ok) {
         await loadCart();

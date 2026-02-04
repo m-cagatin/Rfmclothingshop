@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import argon2 from 'argon2';
 import * as cashflowService from './cashflow.service';
 
@@ -23,6 +23,15 @@ interface SubmitPaymentInput {
     unitPrice: number;
     subtotal: number;
     image?: string;
+    size?: string;
+    color?: string;
+    customizationData?: {
+      productId: number;
+      frontDesignUrl?: string;
+      backDesignUrl?: string;
+      frontCanvasJson?: string;
+      backCanvasJson?: string;
+    };
   }>;
 }
 
@@ -177,7 +186,7 @@ export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentRe
     const fallbackProductId = fallbackProduct.product_id;
 
     // Prepare order items with valid product_ids
-    const orderItemsData = await Promise.all(
+    const orderItemsData: Prisma.order_itemsUncheckedCreateWithoutOrdersInput[] = await Promise.all(
       orderItems.map(async (item) => {
         let productId = item.productId;
         
@@ -222,6 +231,10 @@ export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentRe
           }
         }
         
+        const customizationData = item.customizationData
+          ? (JSON.parse(JSON.stringify(item.customizationData)) as Prisma.InputJsonValue)
+          : Prisma.DbNull;
+
         return {
           product_id: productId,
           product_name: item.productName,
@@ -229,6 +242,9 @@ export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentRe
           unit_price: item.unitPrice,
           subtotal: item.subtotal,
           image_url: imageUrl,
+          size: item.size || null,
+          color: item.color || null,
+          customization_data: customizationData,
         };
       })
     );

@@ -8,9 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
+import { useCatalogProduct } from '../hooks/useCatalogProduct';
 
 interface ProductDetailsPageProps {
-  onAddToCart: (id: string, quantity?: number) => void;
+  onAddToCart: (id: string, quantity?: number, size?: string, color?: string) => void;
   onToggleFavorite: (id: string) => void;
   favorites: Array<{ id: string }>;
 }
@@ -38,76 +39,30 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
   const navigate = useNavigate();
   const { requireAuth } = useAuth();
 
-  const [selectedVariant, setSelectedVariant] = useState(0);
-  const [selectedColor, setSelectedColor] = useState(0);
-  const [selectedImageView, setSelectedImageView] = useState<'front' | 'back' | 'detail'>('front');
+  const [selectedImageView, setSelectedImageView] = useState(0);
   const [selectedSize, setSelectedSize] = useState('');
   const [quantity, setQuantity] = useState(1);
 
-  // Mock comprehensive product data
-  const allProducts = [
-    {
-      id: '1',
-      name: 'Classic Round Neck T-Shirt',
-      category: 'T-Shirt - Round Neck',
-      fitType: 'Regular Fit',
-      gender: 'Unisex',
-      fitDescription: 'True to size, relaxed fit for everyday comfort',
-      material: '100% Combed Cotton',
-      weight: '180g (±10g)',
-      description: 'Our Classic Round Neck T-Shirt is the foundation of any wardrobe. Made from premium 100% combed cotton, this versatile piece offers superior softness and breathability. Perfect for custom printing, casual wear, or layering. The fabric is pre-shrunk to maintain its shape and size after washing.',
-      variants: [
-        {
-          name: 'Classic White',
-          images: {
-            front: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-            back: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-            detail: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-          },
-          colors: [
-            { name: 'White', hex: '#FFFFFF' },
-            { name: 'Black', hex: '#1a1a1a' },
-            { name: 'Navy Blue', hex: '#1e3a8a' },
-          ],
-        },
-        {
-          name: 'Premium Black',
-          images: {
-            front: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-            back: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-            detail: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxibGFjayUyMGhvb2RpZXxlbnwxfHx8fDE3NjI5MjQwNzV8MA&ixlib=rb-4.1.0&q=80&w=1080',
-          },
-          colors: [
-            { name: 'Black', hex: '#1a1a1a' },
-            { name: 'Charcoal', hex: '#374151' },
-          ],
-        },
-      ],
-      sizes: {
-        adult: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'],
-        kids: ['S', 'M', 'L'],
-      },
-      pricing: [
-        { printType: 'No Print', price: 200 },
-        { printType: 'Front Print Only', price: 300 },
-        { printType: 'Back Print Only', price: 300 },
-        { printType: 'Front + Back Print', price: 380 },
-      ],
-      printAreas: ['Front', 'Back', 'Sleeves (optional)'],
-      minOrder: 10,
-      maxOrder: 500,
-      turnaroundTime: '5-7 business days',
-      xlSurcharge: 20,
-    },
-  ];
+  // Fetch product from API
+  const { product, loading, error } = useCatalogProduct(id);
 
-  const product = allProducts.find(p => p.id === id);
-
-  if (!product) {
+  // Handle loading state
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
-          <h2 className="mb-4">Product not found</h2>
+          <p className="text-gray-600">Loading product...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle error or not found
+  if (error || !product) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <h2 className="mb-4">{error || 'Product not found'}</h2>
           <Button onClick={() => navigate('/')} className="transition-transform active:scale-95">
             Return to Home
           </Button>
@@ -116,9 +71,14 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
     );
   }
 
-  const currentVariant = product.variants[selectedVariant];
-  const currentColor = currentVariant.colors[selectedColor];
-  const currentImage = currentVariant.images[selectedImageView];
+  // Build all available images for the gallery
+  const allImages = [
+    product.image,
+    product.backImage,
+    ...product.additionalImages
+  ].filter(Boolean) as string[];
+  
+  const currentImage = allImages[selectedImageView] || product.image;
   const isFavorited = favorites.some(fav => fav.id === product.id);
 
   const handleAddToCart = () => {
@@ -126,13 +86,17 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
       toast.error('Please select a size');
       return;
     }
-    if (quantity < product.minOrder) {
-      toast.error(`Minimum order quantity is ${product.minOrder}`);
+    if (quantity < 1) {
+      toast.error('Quantity must be at least 1');
+      return;
+    }
+    if (product.stockQuantity > 0 && quantity > product.stockQuantity) {
+      toast.error(`Only ${product.stockQuantity} items available in stock`);
       return;
     }
 
     requireAuth(() => {
-      onAddToCart(product.id, quantity);
+      onAddToCart(product.id, quantity, selectedSize);
       toast.success(`${quantity} ${quantity > 1 ? 'items' : 'item'} added to cart!`);
     });
   };
@@ -144,13 +108,28 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
     });
   };
 
-  const calculateSizePrice = (basePrice: number, size: string): number => {
-    const xlCount = (size.match(/X/g) || []).length;
-    if (xlCount >= 2) {
-      return basePrice + (product.xlSurcharge * (xlCount - 1));
+  const handleBuyNow = () => {
+    if (!selectedSize) {
+      toast.error('Please select a size');
+      return;
     }
-    return basePrice;
+    if (quantity < 1) {
+      toast.error('Quantity must be at least 1');
+      return;
+    }
+    if (product.stockQuantity > 0 && quantity > product.stockQuantity) {
+      toast.error(`Only ${product.stockQuantity} items available in stock`);
+      return;
+    }
+
+    requireAuth(() => {
+      onAddToCart(product.id, quantity, selectedSize);
+      toast.success('Proceeding to checkout...');
+      setTimeout(() => navigate('/checkout'), 500);
+    });
   };
+
+  const displayPrice = product.price;
 
   return (
     <div className="min-h-screen bg-white">
@@ -176,82 +155,33 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
             <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden border border-gray-200">
               <ImageWithFallback
                 src={currentImage}
-                alt={`${product.name} - ${currentVariant.name} - ${selectedImageView}`}
+                alt={product.name}
                 className="size-full object-cover"
               />
             </div>
 
-            {/* Image View Selector (Front, Back, Detail) */}
-            <div className="grid grid-cols-3 gap-3">
-              {(['front', 'back', 'detail'] as const).map((view) => (
-                <button
-                  key={view}
-                  onClick={() => setSelectedImageView(view)}
-                  className={`aspect-square rounded-lg overflow-hidden border-2 transition-all active:scale-95 ${
-                    selectedImageView === view
-                      ? 'border-black shadow-md'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <ImageWithFallback
-                    src={currentVariant.images[view]}
-                    alt={`${view} view`}
-                    className="size-full object-cover"
-                  />
-                  <div className="sr-only">{view.charAt(0).toUpperCase() + view.slice(1)} View</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Variant Selector */}
-            <div>
-              <p className="text-sm mb-3">Select Variant:</p>
-              <div className="grid grid-cols-3 gap-3">
-                {product.variants.map((variant, index) => (
+            {/* Image View Selector - only show if multiple images exist */}
+            {allImages.length > 1 && (
+              <div className={`grid gap-3`} style={{ gridTemplateColumns: `repeat(${Math.min(allImages.length, 4)}, minmax(0, 1fr))` }}>
+                {allImages.map((img, idx) => (
                   <button
-                    key={index}
-                    onClick={() => {
-                      setSelectedVariant(index);
-                      setSelectedColor(0);
-                    }}
-                    className={`p-3 rounded-lg border-2 transition-all active:scale-95 text-sm ${
-                      selectedVariant === index
-                        ? 'border-black bg-gray-50'
+                    key={idx}
+                    onClick={() => setSelectedImageView(idx)}
+                    className={`aspect-square rounded-lg overflow-hidden border-2 transition-all active:scale-95 ${
+                      selectedImageView === idx
+                        ? 'border-black shadow-md'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    {variant.name}
+                    <ImageWithFallback
+                      src={img}
+                      alt={`View ${idx + 1}`}
+                      className="size-full object-cover"
+                    />
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* Color Swatches */}
-            <div>
-              <p className="text-sm mb-3">
-                Color: <span className="font-medium">{currentColor.name}</span>
-              </p>
-              <div className="flex gap-3">
-                {currentVariant.colors.map((color, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedColor(index)}
-                    className={`size-12 rounded-full border-2 transition-all active:scale-95 ${
-                      selectedColor === index
-                        ? 'border-black ring-2 ring-black ring-offset-2'
-                        : 'border-gray-300 hover:border-gray-400'
-                    }`}
-                    style={{
-                      backgroundColor: color.hex,
-                      boxShadow: color.hex === '#FFFFFF' ? 'inset 0 0 0 1px rgba(0,0,0,0.1)' : undefined,
-                    }}
-                    title={color.name}
-                  >
-                    <span className="sr-only">{color.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
 
           {/* RIGHT COLUMN: Product Details */}
@@ -262,23 +192,13 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
                 {product.category}
               </Badge>
               <h1 className="mb-2">{product.name}</h1>
-              <p className="text-gray-600">{currentVariant.name} - {currentColor.name}</p>
+              <p className="text-gray-600">{product.gender}</p>
             </div>
 
             <Separator />
 
             {/* Key Product Info Icons */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-start gap-3">
-                <div className="size-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                  <Ruler className="size-5 text-gray-700" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Fit Type</p>
-                  <p className="font-medium">{product.fitType}</p>
-                </div>
-              </div>
-
               <div className="flex items-start gap-3">
                 <div className="size-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
                   <Users className="size-5 text-gray-700" />
@@ -298,27 +218,19 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
                   <p className="font-medium text-sm">{product.material}</p>
                 </div>
               </div>
-
-              <div className="flex items-start gap-3">
-                <div className="size-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                  <Weight className="size-5 text-gray-700" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Weight</p>
-                  <p className="font-medium">{product.weight}</p>
-                </div>
-              </div>
             </div>
 
             <Separator />
 
-            {/* Fit Description */}
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-              <p className="text-sm">
-                <span className="font-medium">Fit: </span>
-                {product.fitDescription}
-              </p>
-            </div>
+            {/* Stock Status */}
+            {product.stockQuantity > 0 && (
+              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                <p className="text-sm text-green-700">
+                  <span className="font-medium">In Stock: </span>
+                  {product.stockQuantity} items available
+                </p>
+              </div>
+            )}
 
             {/* Size Selection */}
             <div>
@@ -331,126 +243,80 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
                 )}
               </div>
 
-              {/* Adult Sizes */}
-              <div className="mb-3">
-                <p className="text-xs text-gray-500 mb-2">Adult Sizes</p>
-                <div className="grid grid-cols-7 gap-2">
-                  {product.sizes.adult.map((size) => {
-                    const xlCount = (size.match(/X/g) || []).length;
-                    const hasSurcharge = xlCount >= 2;
-                    return (
-                      <button
-                        key={size}
-                        onClick={() => setSelectedSize(size)}
-                        className={`py-2.5 px-2 border-2 rounded-lg transition-all active:scale-95 text-sm relative ${
-                          selectedSize === size
-                            ? 'border-black bg-black text-white'
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        {size}
-                        {hasSurcharge && (
-                          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] px-1 rounded">
-                            +₱{product.xlSurcharge * (xlCount - 1)}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                {product.xlSurcharge > 0 && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    * XL and above: Add ₱{product.xlSurcharge} per X
-                  </p>
-                )}
+              <div className="grid grid-cols-6 gap-2">
+                {product.sizes.map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => setSelectedSize(size)}
+                    className={`py-2.5 px-2 border-2 rounded-lg transition-all active:scale-95 text-sm ${
+                      selectedSize === size
+                        ? 'border-black bg-black text-white'
+                        : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
               </div>
-
-              {/* Kids Sizes */}
-              {product.sizes.kids.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 mb-2">Kids Sizes</p>
-                  <div className="grid grid-cols-7 gap-2">
-                    {product.sizes.kids.map((size) => (
-                      <button
-                        key={size}
-                        onClick={() => setSelectedSize(size)}
-                        className={`py-2.5 px-2 border-2 rounded-lg transition-all active:scale-95 text-sm ${
-                          selectedSize === size
-                            ? 'border-black bg-black text-white'
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        {size}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             <Separator />
 
-            {/* Quantity & Order Info */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-500 mb-2">Quantity</p>
-                <div className="flex items-center gap-2 border-2 border-gray-300 rounded-lg w-full">
-                  <button
-                    onClick={() => setQuantity(Math.max(product.minOrder, quantity - 1))}
-                    className="px-4 py-3 hover:bg-gray-100 transition-colors active:scale-95"
-                    disabled={quantity <= product.minOrder}
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    value={quantity}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || product.minOrder;
-                      setQuantity(Math.min(Math.max(val, product.minOrder), product.maxOrder));
-                    }}
-                    className="flex-1 text-center font-medium outline-none"
-                    min={product.minOrder}
-                    max={product.maxOrder}
-                  />
-                  <button
-                    onClick={() => setQuantity(Math.min(product.maxOrder, quantity + 1))}
-                    className="px-4 py-3 hover:bg-gray-100 transition-colors active:scale-95"
-                    disabled={quantity >= product.maxOrder}
-                  >
-                    +
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Min: {product.minOrder} | Max: {product.maxOrder}
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Package className="size-4 text-gray-500" />
-                  <div>
-                    <p className="text-xs text-gray-500">Min Order</p>
-                    <p className="text-sm font-medium">{product.minOrder} pcs</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="size-4 text-gray-500" />
-                  <div>
-                    <p className="text-xs text-gray-500">Turnaround</p>
-                    <p className="text-sm font-medium">{product.turnaroundTime}</p>
-                  </div>
-                </div>
+            {/* Quantity */}
+            <div>
+              <p className="text-sm text-gray-500 mb-2">Quantity</p>
+              <div className="flex items-center gap-2 border-2 border-gray-300 rounded-lg w-32">
+                <button
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  className="px-4 py-3 hover:bg-gray-100 transition-colors active:scale-95"
+                  disabled={quantity <= 1}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  value={quantity}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 1;
+                    setQuantity(Math.max(1, val));
+                  }}
+                  className="flex-1 text-center font-medium outline-none"
+                  min={1}
+                />
+                <button
+                  onClick={() => setQuantity(quantity + 1)}
+                  className="px-4 py-3 hover:bg-gray-100 transition-colors active:scale-95"
+                >
+                  +
+                </button>
               </div>
             </div>
 
             <Separator />
+
+            {/* Price Display */}
+            <div className="bg-gray-50 p-6 rounded-lg border-2 border-gray-200">
+              <p className="text-sm text-gray-600 mb-1">Price</p>
+              <p className="text-3xl font-bold">₱{displayPrice.toFixed(2)}</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Total: ₱{(displayPrice * quantity).toFixed(2)}
+              </p>
+            </div>
 
             {/* Action Buttons */}
             <div className="space-y-3">
               <Button
-                onClick={handleAddToCart}
+                onClick={handleBuyNow}
                 className="w-full h-12 bg-black text-white hover:bg-black/90 transition-transform active:scale-95"
+              >
+                <ShoppingCart className="size-4 mr-2" />
+                Buy Now
+              </Button>
+
+              <Button
+                onClick={handleAddToCart}
+                variant="outline"
+                className="w-full h-12 transition-transform active:scale-95"
               >
                 <ShoppingCart className="size-4 mr-2" />
                 Add to Cart
@@ -467,18 +333,6 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
                 {isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
               </Button>
             </div>
-
-            {/* Print Areas */}
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-              <p className="text-sm font-medium mb-2">Available Print Areas:</p>
-              <div className="flex flex-wrap gap-2">
-                {product.printAreas.map((area) => (
-                  <Badge key={area} variant="secondary" className="bg-white">
-                    {area}
-                  </Badge>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -491,12 +345,6 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:bg-transparent px-6 py-3"
               >
                 Description
-              </TabsTrigger>
-              <TabsTrigger
-                value="pricing"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:bg-transparent px-6 py-3"
-              >
-                Pricing & Print Options
               </TabsTrigger>
               <TabsTrigger
                 value="specifications"
@@ -512,44 +360,6 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
               </div>
             </TabsContent>
 
-            <TabsContent value="pricing" className="mt-8">
-              <div className="max-w-4xl">
-                <h3 className="mb-6">Pricing per Print Type</h3>
-                
-                {/* Pricing Table */}
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="text-left px-6 py-4 font-medium">Print Type</th>
-                        <th className="text-right px-6 py-4 font-medium">Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {product.pricing.map((tier, index) => (
-                        <tr
-                          key={index}
-                          className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="px-6 py-4">{tier.printType}</td>
-                          <td className="px-6 py-4 text-right font-medium">
-                            ₱{tier.price.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-900">
-                    <strong>Note:</strong> Prices shown are base prices for standard sizes (XS-L). 
-                    Additional charges apply for XL and above sizes.
-                  </p>
-                </div>
-              </div>
-            </TabsContent>
-
             <TabsContent value="specifications" className="mt-8">
               <div className="max-w-3xl">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -557,10 +367,6 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
                     <div>
                       <p className="text-sm text-gray-500 mb-1">Category</p>
                       <p className="font-medium">{product.category}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Fit Type</p>
-                      <p className="font-medium">{product.fitType}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500 mb-1">Gender</p>
@@ -574,23 +380,12 @@ export function ProductDetailsPage({ onAddToCart, onToggleFavorite, favorites }:
 
                   <div className="space-y-4">
                     <div>
-                      <p className="text-sm text-gray-500 mb-1">Weight</p>
-                      <p className="font-medium">{product.weight}</p>
-                    </div>
-                    <div>
                       <p className="text-sm text-gray-500 mb-1">Available Sizes</p>
-                      <p className="font-medium">
-                        {product.sizes.adult.join(', ')}
-                        {product.sizes.kids.length > 0 && `, ${product.sizes.kids.join(', ')}`}
-                      </p>
+                      <p className="font-medium">{product.sizes.join(', ')}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500 mb-1">Minimum Order</p>
-                      <p className="font-medium">{product.minOrder} pieces</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Turnaround Time</p>
-                      <p className="font-medium">{product.turnaroundTime}</p>
+                      <p className="text-sm text-gray-500 mb-1">Stock Quantity</p>
+                      <p className="font-medium">{product.stockQuantity} {product.stockQuantity === 1 ? 'item' : 'items'}</p>
                     </div>
                   </div>
                 </div>

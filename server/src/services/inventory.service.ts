@@ -1,9 +1,10 @@
 import { PrismaClient } from '@prisma/client';
+import { randomBytes } from 'crypto';
 
 const prisma = new PrismaClient();
 
 function generateId(): string {
-  return crypto.randomBytes(16).toString('hex');
+  return randomBytes(16).toString('hex');
 }
 
 interface CreateItemData {

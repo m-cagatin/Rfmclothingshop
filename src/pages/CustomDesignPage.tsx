@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { toast } from 'sonner';
 import { 
   ArrowLeft,
   ArrowRight,
@@ -29,7 +32,22 @@ import {
   Upload,
   Grid3x3,
   Check,
-  Package
+  Package,
+  Undo,
+  Redo,
+  Save,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignVerticalJustifyCenter,
+  AlignHorizontalJustifyCenter,
+  AlignVerticalSpaceAround,
+  AlignHorizontalSpaceAround,
+  Lock,
+  Unlock,
+  Eye,
+  ShoppingCart,
+  Loader2
 } from 'lucide-react';
 import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
 import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
@@ -39,9 +57,15 @@ import { useImageUpload } from '../hooks/useImageUpload';
 import { useCanvasResources } from '../hooks/useCanvasResources';
 import { useCanvasZoomPan } from '../hooks/useCanvasZoomPan';
 import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
+import { useCart } from '../hooks/useCart';
 import { PropertiesPanel } from '../components/customizer/PropertiesPanel';
+import { DesignCard } from '../components/customizer/DesignCard';
 import { AlertCircle } from 'lucide-react';
 import { PRINT_AREA_PRESETS, PrintAreaPreset, DEFAULT_ZOOM } from '../utils/fabricHelpers';
+import { exportCanvasToDataURL, getPrintAreaBounds } from '../utils/canvasExport';
+import { validateDesign, autoFitObjectsToPrintArea, DESIGN_LIMITS } from '../utils/designValidation';
+import { fetchWithRetry, getErrorMessage, formatErrorForLogging } from '../utils/apiHelpers';
+import { LoadingOverlay } from '../components/LoadingComponents';
 import '../styles/canvasEditor.css';
 
 type ViewSide = 'front' | 'back';
@@ -80,6 +104,24 @@ interface LayerItem {
   }[];
 }
 
+interface ClothingVariant {
+  id: string;
+  productId: string;
+  productName: string;
+  variantName: string;
+  baseProduct: string;
+  image: string;
+  size: string;
+  color: string;
+  colorCode: string;
+  price: number;
+  retailPrice: number;
+  totalPrice: number;
+  category: string;
+  printOption: 'none' | 'front' | 'back';
+  isAvailable: boolean;
+}
+
 // Category-specific clothing images - Using uploaded white t-shirt mockups
 const categoryImages: Record<string, { front: string; back: string }> = {
   'T-Shirt': {
@@ -107,7 +149,15 @@ const categoryImages: Record<string, { front: string; back: string }> = {
 export function CustomDesignPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, isHydrating } = useAuth();
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  
+  // Show warning if not logged in (but don't redirect - let them use the editor)
+  useEffect(() => {
+    if (!isHydrating && !user) {
+      toast.info('Log in to save your designs automatically', { duration: 5000 });
+    }
+  }, [user, isHydrating]);
   
   // Canvas zoom/pan hook (Phase 2)
   const {
@@ -138,20 +188,26 @@ export function CustomDesignPage() {
   const [printAreaSize, setPrintAreaSize] = useState<PrintAreaPreset>('Letter');
   const [activeTab, setActiveTab] = useState('edit');
   const [activeTool, setActiveTool] = useState<string | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  
+  // Loading flag to prevent auto-save during design load
+  const isLoadingDesignRef = useRef(false);
+  
   const [isClothingPanelOpen, setIsClothingPanelOpen] = useState(false);
+  const [isVariantDetailsPanelOpen, setIsVariantDetailsPanelOpen] = useState(false);
   const [isUploadPanelOpen, setIsUploadPanelOpen] = useState(false);
   const [isTextPanelOpen, setIsTextPanelOpen] = useState(false);
   const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
   const [isGraphicsPanelOpen, setIsGraphicsPanelOpen] = useState(false);
   const [isPatternsPanelOpen, setIsPatternsPanelOpen] = useState(false);
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
-  const [isProductionCostOpen, setIsProductionCostOpen] = useState(true);
-  const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
   const [expandedLayerIds, setExpandedLayerIds] = useState<Set<any>>(new Set());
   const [expandedPricingIds, setExpandedPricingIds] = useState<Set<string>>(new Set());
   
-  // NEW: Active variant tracking
+  // Collapsible states for Variant Details panel
+  const [isProductionCostOpen, setIsProductionCostOpen] = useState(false);
+  const [isPrintAreaOpen, setIsPrintAreaOpen] = useState(true);
+  
+  // Active variant tracking (single variant only) - user must select from variant panel
   const [activeVariant, setActiveVariant] = useState<{
     id: string;
     productId: string;
@@ -164,27 +220,28 @@ export function CustomDesignPage() {
     totalPrice: number;
   } | null>(null);
 
-  // NEW: Track all added variants (for future multi-variant support)
-  const [addedVariants, setAddedVariants] = useState<Array<{
-    id: string;
-    productId: string;
-    productName: string;
-    variantName: string;
-    size: string;
-    printOption: 'none' | 'front' | 'back';
-    image: string;
-    retailPrice: number;
-    totalPrice: number;
-  }>>([]);
-
-  // NEW: Expanded variant IDs in layers panel
-  const [expandedVariantIds, setExpandedVariantIds] = useState<Set<string>>(new Set());
+  // Track size and print selections for current product
+  const [selectedSize, setSelectedSize] = useState<string>('');
+  const [selectedPrintOption, setSelectedPrintOption] = useState<'none' | 'front' | 'back'>('none');
   
-  // NEW: Track size and print selections per product
-  const [selectedSizePerProduct, setSelectedSizePerProduct] = useState<Record<string, string>>({});
-  const [selectedPrintPerProduct, setSelectedPrintPerProduct] = useState<Record<string, 'none' | 'front' | 'back'>>({});
+  // History management for undo/redo
+  const [historyStack, setHistoryStack] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyTimeoutRef = useRef<number | null>(null);
   
-  const [selectedSize, setSelectedSize] = useState('medium');
+  // Unified design status for both save and load
+  const [designStatus, setDesignStatus] = useState<{
+    type: 'idle' | 'loading' | 'loaded' | 'saving' | 'saved' | 'save-error' | 'load-error';
+    message?: string;
+  }>({ type: 'idle' });
+  
+  const saveTimeoutRef = useRef<number | null>(null);
+  
+  // Grid and snap settings (grid size is in pixels at 300 DPI: 1" = 300px)
+  const [showGrid, setShowGrid] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [gridSize, setGridSize] = useState(50); // Default 0.5" grid (150px at 300 DPI, scaled down)
+  
   const [productName, setProductName] = useState('');
   const [productCategory, setProductCategory] = useState('');
   const [selectedView, setSelectedView] = useState<ViewSide>('front');
@@ -203,6 +260,10 @@ export function CustomDesignPage() {
   
   // Recent uploads state
   const [recentUploads, setRecentUploads] = useState<Array<{ url: string; width: number; height: number; publicId: string; timestamp: number }>>([]);
+  
+  // Saved designs state
+  const [savedDesigns, setSavedDesigns] = useState<any[]>([]);
+  const [isLoadingDesigns, setIsLoadingDesigns] = useState(false);
   
   // Canvas resources hook
   const { graphics, patterns, fetchGraphics } = useCanvasResources();
@@ -226,6 +287,12 @@ export function CustomDesignPage() {
       console.log('Object selected:', obj);
     },
   });
+
+  // Initialize cart hook
+  const { addToCart } = useCart();
+  
+  // Add to Cart state
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   // NEW: Helper function to check if variant is active
   const isVariantActive = () => {
@@ -255,85 +322,1048 @@ export function CustomDesignPage() {
     }
   };
 
-  // Phase 5: Variant Management Handlers
-  const handleDeleteVariant = (variantId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent expand/collapse
+  // Undo/Redo Handlers
+  const captureCanvasState = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
     
-    const variant = addedVariants.find(v => v.id === variantId);
-    if (!variant) return;
+    // Clear existing timeout
+    if (historyTimeoutRef.current) {
+      clearTimeout(historyTimeoutRef.current);
+    }
     
-    const confirmDelete = window.confirm(
-      `Delete "${variant.productName}" (${variant.variantName} - ${variant.size})?\n\n` +
-      `This will remove the variant from your customization list.`
-    );
+    // Debounce: capture state after 300ms of no changes
+    historyTimeoutRef.current = window.setTimeout(() => {
+      const canvasJSON = JSON.stringify(fabricCanvas.canvasRef!.toJSON());
+      
+      setHistoryStack(prev => {
+        // Remove any "future" states if we're in the middle of history
+        const newStack = historyIndex >= 0 ? prev.slice(0, historyIndex + 1) : [];
+        
+        // Add new state
+        newStack.push(canvasJSON);
+        
+        // Limit to 50 states
+        if (newStack.length > 50) {
+          newStack.shift();
+          return newStack;
+        }
+        
+        return newStack;
+      });
+      
+      // Update index to point to latest state
+      setHistoryIndex(prev => {
+        const newIndex = prev + 1;
+        return newIndex > 49 ? 49 : newIndex;
+      });
+    }, 300);
+  }, [fabricCanvas.canvasRef, historyIndex]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex <= 0 || !fabricCanvas.canvasRef) return;
     
-    if (!confirmDelete) return;
+    const newIndex = historyIndex - 1;
+    const prevState = historyStack[newIndex];
     
-    // Remove from variants list
-    setAddedVariants(prev => prev.filter(v => v.id !== variantId));
+    if (prevState) {
+      fabricCanvas.canvasRef.loadFromJSON(prevState, () => {
+        fabricCanvas.canvasRef!.renderAll();
+        fabricCanvas.updateCanvasObjects?.();
+        setHistoryIndex(newIndex);
+      });
+    }
+  }, [historyIndex, historyStack, fabricCanvas]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex >= historyStack.length - 1 || !fabricCanvas.canvasRef) return;
     
-    // Remove from expanded IDs
-    setExpandedVariantIds(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(variantId);
-      return newSet;
+    const newIndex = historyIndex + 1;
+    const nextState = historyStack[newIndex];
+    
+    if (nextState) {
+      fabricCanvas.canvasRef.loadFromJSON(nextState, () => {
+        fabricCanvas.canvasRef!.renderAll();
+        fabricCanvas.updateCanvasObjects?.();
+        setHistoryIndex(newIndex);
+      });
+    }
+  }, [historyIndex, historyStack, fabricCanvas]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Z or Cmd+Z = Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      // Ctrl+Y or Cmd+Shift+Z = Redo
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
+  // Save design to database
+  const handleSave = useCallback(async () => {
+    if (!fabricCanvas.canvasRef || !activeVariant) {
+      console.log('Cannot save: no canvas or active variant');
+      return;
+    }
+
+    // Check authentication
+    if (!user) {
+      console.error('❌ Cannot save: User not authenticated');
+      toast.error('Please log in to save your design');
+      throw new Error('User not authenticated');
+    }
+
+    console.log('💾 Starting save process...', {
+      productId: activeVariant.productId,
+      view: selectedView,
+      userId: user.id
     });
+
+    // Validate design before saving
+    const validation = validateDesign(fabricCanvas.canvasRef, printAreaSize);
     
-    // Handle if deleting active variant
-    if (activeVariant?.id === variantId) {
-      const remainingVariants = addedVariants.filter(v => v.id !== variantId);
-      if (remainingVariants.length > 0) {
-        // Set first remaining variant as active
-        setActiveVariant(remainingVariants[0]);
-        setExpandedVariantIds(prev => new Set(prev).add(remainingVariants[0].id));
-      } else {
-        // No variants left
-        setActiveVariant(null);
+    // Show errors if any
+    if (!validation.valid) {
+      console.error('❌ Validation failed:', validation.errors);
+      validation.errors.forEach(error => toast.error(error));
+      setDesignStatus({ type: 'idle' });
+      throw new Error('Validation failed');
+    }
+
+    // Show warnings but allow save
+    if (validation.warnings.length > 0) {
+      console.warn('⚠️ Validation warnings:', validation.warnings);
+      validation.warnings.forEach(warning => toast.warning(warning));
+    }
+
+    try {
+      setDesignStatus({ type: 'saving', message: 'Saving design...' });
+      
+      console.log('📡 Saving design via proxy');
+      
+      // 1. Export canvas to thumbnail
+      console.log('🖼️ Exporting canvas thumbnail...');
+      const thumbnailDataURL = exportCanvasToDataURL(fabricCanvas.canvasRef, {
+        format: 'png',
+        quality: 0.8,
+        multiplier: 0.5  // Smaller for thumbnail
+      });
+      console.log('✅ Thumbnail exported');
+      
+      // 2. Upload thumbnail to Cloudinary
+      console.log('☁️ Uploading to Cloudinary...');
+      const thumbnailBlob = await (await fetch(thumbnailDataURL)).blob();
+      const formData = new FormData();
+      formData.append('image', thumbnailBlob, 'thumbnail.png');
+      formData.append('userId', user.id);
+      formData.append('productId', activeVariant.productId);
+      formData.append('view', selectedView);
+      
+      const uploadResponse = await fetch(`/api/custom-design/upload-preview`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      console.log('📤 Upload response status:', uploadResponse.status);
+      
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error('❌ Upload failed:', errorText);
+        throw new Error(`Failed to upload thumbnail: ${uploadResponse.status} ${errorText}`);
       }
       
-      // Clear canvas when switching/removing active variant
-      if (fabricCanvas.canvasRef) {
-        fabricCanvas.canvasRef.clear();
-        fabricCanvas.canvasRef.renderAll();
-        fabricCanvas.updateCanvasObjects?.();
+      const uploadResult = await uploadResponse.json();
+      const thumbnailUrl = uploadResult.url;
+      
+      // 3. Get canvas JSON
+      const canvasJSON = JSON.stringify(fabricCanvas.canvasRef.toJSON());
+      const view = selectedView;
+      
+      // 4. Load existing design to preserve other canvas view
+      let existingFrontCanvas = null;
+      let existingBackCanvas = null;
+      let existingFrontThumbnail = null;
+      let existingBackThumbnail = null;
+      
+      try {
+        const loadResponse = await fetch(`/api/design/load/${activeVariant.productId}?userId=${user.id}`, {
+          credentials: 'include',
+        });
+        if (loadResponse.ok) {
+          const loadResult = await loadResponse.json();
+          existingFrontCanvas = loadResult.data?.frontCanvasJson;
+          existingBackCanvas = loadResult.data?.backCanvasJson;
+          existingFrontThumbnail = loadResult.data?.frontThumbnailUrl;
+          existingBackThumbnail = loadResult.data?.backThumbnailUrl;
+          console.log('✅ Loaded existing design to preserve other view');
+        } else if (loadResponse.status === 404) {
+          console.log('ℹ️ No existing design found (this is normal for new designs)');
+        } else {
+          console.warn('⚠️ Unexpected status when loading existing design:', loadResponse.status);
+        }
+      } catch (error) {
+        console.log('ℹ️ No existing design to preserve (this is normal for new designs)');
       }
+      
+      // 5. Save to database - preserve other view's data
+      const response = await fetchWithRetry(
+        '/api/design/save',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            userId: user.id,
+            customizableProductId: parseInt(activeVariant.productId),
+            selectedSize: selectedSize || 'M',
+            selectedPrintOption: view === 'front' ? 'front' : 'back',
+            printAreaPreset: printAreaSize,
+            frontCanvasJson: view === 'front' ? canvasJSON : existingFrontCanvas,
+            backCanvasJson: view === 'back' ? canvasJSON : existingBackCanvas,
+            frontThumbnailUrl: view === 'front' ? thumbnailUrl : existingFrontThumbnail,
+            backThumbnailUrl: view === 'back' ? thumbnailUrl : existingBackThumbnail,
+          }),
+        },
+        {
+          maxRetries: 2,
+          onRetry: (attempt) => {
+            toast.info(`Save failed, retrying... (Attempt ${attempt}/2)`);
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Save failed:', formatErrorForLogging({ status: response.status, message: errorData.message || response.statusText }));
+        throw new Error(errorData.message || `Failed to save design: ${response.statusText}`);
+      }
+
+      setDesignStatus({ type: 'saved', message: 'Auto-saved!' });
+      
+      // Auto-hide success message
+      setTimeout(() => {
+        setDesignStatus({ type: 'idle' });
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Save error:', formatErrorForLogging(error));
+      const userMessage = getErrorMessage(error);
+      toast.error(userMessage);
+      setDesignStatus({ 
+        type: 'save-error',
+        message: userMessage
+      });
+    }
+  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, selectedSize, user]);
+
+  // Handle view switching (front/back) - save current view first
+  const handleViewSwitch = useCallback(async (newView: ViewSide) => {
+    if (newView === selectedView) return;
+    
+    // Save current view before switching
+    if (fabricCanvas.canvasRef && activeVariant) {
+      const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
+      if (objects.length > 0) {
+        console.log(`Saving ${selectedView} view before switching to ${newView}...`);
+        await handleSave();
+        console.log('✅ Save complete, switching view now');
+      }
+    }
+    
+    // Only switch after save completes (or if no save needed)
+    setSelectedView(newView);
+  }, [selectedView, fabricCanvas.canvasRef, activeVariant, handleSave]);
+
+  // Navigate to preview page with design data
+  // Preview handler - NOT wrapped in useCallback to always have fresh canvas reference
+  const handlePreview = async () => {
+    console.log('🔵 Preview button clicked');
+    console.log('🔵 Canvas ref exists:', !!fabricCanvas.canvasRef);
+    console.log('🔵 Active variant:', activeVariant?.productName || 'none');
+    
+    // Get current canvas reference directly
+    const canvas = fabricCanvas.canvasRef;
+    
+    // Validation 1: Canvas must exist
+    if (!canvas) {
+      console.error('❌ Canvas not initialized');
+      toast.error('Canvas not ready. Please wait and try again.');
+      return;
+    }
+
+    // Validation 2: Variant must be selected
+    if (!activeVariant) {
+      console.error('❌ No variant selected');
+      toast.error('Please select a product first');
+      return;
+    }
+
+    // Get all objects excluding print area markers
+    const allObjects = canvas.getObjects();
+    console.log('🔵 Total objects on canvas:', allObjects.length);
+    
+    const designObjects = allObjects.filter(obj => {
+      const name = (obj as any).name || '';
+      return !name.includes('print-area') && !name.includes('boundary');
+    });
+    console.log('🔵 Design objects (excluding markers):', designObjects.length);
+
+    // Validation 3: Must have at least one design element
+    if (designObjects.length === 0) {
+      console.error('❌ No design objects found');
+      toast.error('Please add some design elements before previewing');
+      return;
+    }
+
+    try {
+      // Save to database first if user is logged in (so design persists)
+      if (user) {
+        console.log('🔵 User logged in, saving design to database before preview...');
+        try {
+          await handleSave();
+          console.log('✅ Design saved to database');
+        } catch (saveError) {
+          console.warn('⚠️ Save failed, but continuing to preview:', saveError);
+          // Don't block preview if save fails
+        }
+      }
+
+      // Export canvas JSON
+      const canvasJSON = canvas.toJSON();
+      const canvasData = JSON.stringify(canvasJSON);
+      console.log('✅ Canvas JSON exported, objects:', canvasJSON.objects?.length || 0);
+      
+      // Get print area dimensions
+      const printArea = PRINT_AREA_PRESETS[printAreaSize];
+      if (!printArea) {
+        console.error('❌ Invalid print area preset:', printAreaSize);
+        toast.error('Invalid print area configuration');
+        return;
+      }
+      
+      // Calculate bounds for export
+      const printAreaBounds = getPrintAreaBounds(canvas, {
+        width: printArea.width,
+        height: printArea.height,
+      });
+      console.log('🔵 Print area bounds:', printAreaBounds);
+      
+      // Export preview image
+      const previewImage = exportCanvasToDataURL(canvas, {
+        format: 'png',
+        quality: 1,
+        multiplier: 2,
+        ...printAreaBounds,
+      });
+      console.log('✅ Preview image exported, length:', previewImage.length);
+
+      // Build navigation state matching DesignState interface exactly
+      const navigationState = {
+        designData: canvasData,
+        variant: {
+          id: activeVariant.id,
+          productId: activeVariant.productId,
+          productName: activeVariant.productName,
+          variantName: activeVariant.variantName,
+          size: selectedSize || 'M',
+          image: activeVariant.image,
+          retailPrice: activeVariant.retailPrice,
+          totalPrice: activeVariant.totalPrice,
+        },
+        view: selectedView,
+        printAreaSize,
+        previewImage,
+        timestamp: Date.now(),
+      };
+
+      console.log('🔵 Navigation state built:', {
+        designDataLength: navigationState.designData.length,
+        variantName: navigationState.variant.productName,
+        view: navigationState.view,
+        printAreaSize: navigationState.printAreaSize,
+        previewImageLength: navigationState.previewImage.length,
+      });
+
+      // Navigate to preview page
+      console.log('🔵 Calling navigate to /custom-design-preview');
+      navigate('/custom-design-preview', { state: navigationState });
+      console.log('✅ Navigate called successfully');
+      
+    } catch (error) {
+      console.error('❌ Preview error:', error);
+      console.error('❌ Error stack:', (error as Error).stack);
+      toast.error('Failed to generate preview: ' + (error as Error).message);
     }
   };
 
-  const handleSwitchActiveVariant = (variant: typeof activeVariant, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent expand/collapse
+  // Trigger auto-save with debounce (2 seconds)
+  const triggerAutoSave = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
     
-    if (activeVariant?.id === variant?.id) {
-      // Already active, do nothing
+    // Count actual design objects (exclude print area markers)
+    const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
+    
+    // Auto-save when there's at least 1 object
+    if (objects.length < 1) {
       return;
     }
     
-    if (!variant) return;
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+    }
     
-    const hasObjects = fabricCanvas.canvasObjects.length > 0;
+    saveTimeoutRef.current = window.setTimeout(() => {
+      handleSave();
+    }, 2000);
+  }, [handleSave, fabricCanvas.canvasRef]);
+
+  // Check if we can add more objects
+  const canAddMoreObjects = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return false;
     
-    if (hasObjects) {
-      const confirmSwitch = window.confirm(
-        `Switch to "${variant.productName}" (${variant.variantName})?\n\n` +
-        `Warning: Current canvas objects will be cleared when switching variants.`
-      );
+    const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
+    if (objects.length >= DESIGN_LIMITS.MAX_OBJECTS) {
+      toast.error(`Maximum number of objects (${DESIGN_LIMITS.MAX_OBJECTS}) reached. Remove some objects to add more.`);
+      return false;
+    }
+    return true;
+  }, [fabricCanvas.canvasRef]);
+
+  // Auto-fit objects outside print area
+  const handleAutoFit = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    
+    const movedCount = autoFitObjectsToPrintArea(fabricCanvas.canvasRef, printAreaSize);
+    
+    if (movedCount > 0) {
+      toast.success(`Moved ${movedCount} object${movedCount > 1 ? 's' : ''} into print area`);
+      triggerAutoSave();
+    } else {
+      toast.info('All objects are already within the print area');
+    }
+  }, [fabricCanvas.canvasRef, printAreaSize, triggerAutoSave]);
+
+  // Load saved design from database (only if user is logged in)
+  const loadUserDesign = useCallback(async () => {
+    // Skip if no user or no variant/canvas
+    if (!user?.id || !activeVariant || !fabricCanvas.canvasRef) {
+      console.log('loadUserDesign: Skipped - missing user, variant, or canvas');
+      return;
+    }
+    
+    console.log('loadUserDesign: Attempting to load for product', activeVariant.productId);
+    isLoadingDesignRef.current = true;
+
+    try {
+      const response = await fetch(`/api/design/load/${activeVariant.productId}?userId=${user.id}`, {
+        credentials: 'include',
+      });
       
-      if (!confirmSwitch) return;
+      if (response.status === 404) {
+        // No saved design - this is normal, just start fresh
+        console.log('No saved design found - starting fresh');
+        isLoadingDesignRef.current = false;
+        return;
+      }
+      
+      if (!response.ok) {
+        console.warn('Failed to load design, status:', response.status);
+        isLoadingDesignRef.current = false;
+        return;
+      }
+      
+      const result = await response.json();
+      const data = result.data;
+      
+      if (!data) {
+        console.log('No design data in response');
+        isLoadingDesignRef.current = false;
+        return;
+      }
+      
+      // Restore print area preset if saved
+      if (data.printAreaPreset) {
+        setPrintAreaSize(data.printAreaPreset);
+      }
+      
+      // Load canvas data based on current view
+      const canvasData = selectedView === 'front' ? data.frontCanvasJson : data.backCanvasJson;
+      
+      if (canvasData && fabricCanvas.canvasRef) {
+        fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
+          fabricCanvas.canvasRef?.renderAll();
+          console.log('✅ Design loaded from database');
+          toast.success('Previous design restored');
+        });
+      }
+      
+      isLoadingDesignRef.current = false;
+    } catch (error) {
+      console.warn('Error loading design (will start fresh):', error);
+      isLoadingDesignRef.current = false;
+    }
+  }, [activeVariant?.productId, selectedView, fabricCanvas.canvasRef, user?.id, setPrintAreaSize]);
+
+  // Fetch all saved designs for user
+  const fetchSavedDesigns = useCallback(async () => {
+    if (!user?.id) return;
+    
+    setIsLoadingDesigns(true);
+    try {
+      const response = await fetch(`/api/saved-designs/all?userId=${user.id}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch saved designs');
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        setSavedDesigns(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching saved designs:', error);
+      toast.error('Failed to load saved designs from library');
+    } finally {
+      setIsLoadingDesigns(false);
+    }
+  }, [user]);
+
+  // Load design from My Library
+  const handleLoadDesign = useCallback(async (design: any) => {
+    // If different product, navigate to that product
+    if (activeVariant?.productId !== design.customizableProductId.toString()) {
+      // Store design to load after navigation
+      sessionStorage.setItem('designToLoad', JSON.stringify(design));
+      toast.info(`Switching to ${design.product.name}...`);
+      // Navigate to custom design page with product ID
+      navigate(`/custom-design?productId=${design.customizableProductId}`);
+      return;
     }
     
-    // Clear canvas
-    if (fabricCanvas.canvasRef) {
-      fabricCanvas.canvasRef.clear();
-      fabricCanvas.canvasRef.renderAll();
-      fabricCanvas.updateCanvasObjects?.();
+    // Same product - just load the design
+    try {
+      isLoadingDesignRef.current = true;
+      setDesignStatus({ type: 'loading', message: 'Loading design...' });
+      
+      // Load canvas JSON
+      if (selectedView === 'front' && design.frontCanvasJson) {
+        await fabricCanvas.loadCanvasFromJSON(design.frontCanvasJson);
+      } else if (selectedView === 'back' && design.backCanvasJson) {
+        await fabricCanvas.loadCanvasFromJSON(design.backCanvasJson);
+      }
+      
+      // Update size and print option
+      setSelectedSize(design.selectedSize);
+      setSelectedPrintOption(design.selectedPrintOption);
+      
+      // Close library panel
+      setIsLibraryPanelOpen(false);
+      
+      setDesignStatus({ type: 'loaded', message: 'Design loaded successfully' });
+      toast.success('Design loaded!');
+      
+      setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
+    } catch (error) {
+      console.error('Error loading design:', error);
+      toast.error('Failed to load design');
+      setDesignStatus({ type: 'load-error' });
+      isLoadingDesignRef.current = false;
+    }
+  }, [activeVariant, selectedView, fabricCanvas, navigate]);
+
+  // Delete saved design
+  const handleDeleteDesign = useCallback(async (designId: number) => {
+    if (!user?.id) return;
+    
+    try {
+      const response = await fetch(`/api/saved-designs/${designId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete design');
+      }
+      
+      // Refresh designs list
+      setSavedDesigns(prev => prev.filter(d => d.id !== designId));
+      toast.success('Design deleted from library');
+    } catch (error) {
+      console.error('Error deleting design:', error);
+      toast.error('Failed to delete design');
+    }
+  }, [user]);
+
+  // Fetch designs when library panel opens
+  useEffect(() => {
+    if (isLibraryPanelOpen && user?.id) {
+      fetchSavedDesigns();
+    }
+  }, [isLibraryPanelOpen, user, fetchSavedDesigns]);
+
+  // Alignment functions
+  const alignLeft = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to leftmost
+      const objects = (activeObject as any)._objects;
+      const leftmost = Math.min(...objects.map((obj: any) => obj.left - obj.width / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ left: leftmost + obj.width / 2 });
+      });
+    } else {
+      // Single object: align to canvas left
+      activeObject.set({ left: activeObject.width! / 2 });
     }
     
-    // Set new active variant
-    setActiveVariant(variant);
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignCenter = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasCenterX = fabricCanvas.canvasRef.width! / 2;
     
-    // Auto-expand the new active variant
-    setExpandedVariantIds(prev => new Set(prev).add(variant.id));
-  };
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to horizontal center
+      const objects = (activeObject as any)._objects;
+      objects.forEach((obj: any) => {
+        obj.set({ left: canvasCenterX });
+      });
+    } else {
+      // Single object: center on canvas
+      activeObject.set({ left: canvasCenterX });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignRight = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasRight = fabricCanvas.canvasRef.width!;
+    
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to rightmost
+      const objects = (activeObject as any)._objects;
+      const rightmost = Math.max(...objects.map((obj: any) => obj.left + obj.width / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ left: canvasRight - (rightmost - obj.left) });
+      });
+    } else {
+      // Single object: align to canvas right
+      activeObject.set({ left: canvasRight - activeObject.width! / 2 });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignTop = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to topmost
+      const objects = (activeObject as any)._objects;
+      const topmost = Math.min(...objects.map((obj: any) => obj.top - obj.height / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ top: topmost + obj.height / 2 });
+      });
+    } else {
+      // Single object: align to canvas top
+      activeObject.set({ top: activeObject.height! / 2 });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignMiddle = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasCenterY = fabricCanvas.canvasRef.height! / 2;
+    
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to vertical middle
+      const objects = (activeObject as any)._objects;
+      objects.forEach((obj: any) => {
+        obj.set({ top: canvasCenterY });
+      });
+    } else {
+      // Single object: center vertically on canvas
+      activeObject.set({ top: canvasCenterY });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const alignBottom = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject) return;
+
+    const canvasBottom = fabricCanvas.canvasRef.height!;
+    
+    if (activeObject.type === 'activeSelection') {
+      // Multi-selection: align all to bottommost
+      const objects = (activeObject as any)._objects;
+      const bottommost = Math.max(...objects.map((obj: any) => obj.top + obj.height / 2));
+      objects.forEach((obj: any) => {
+        obj.set({ top: canvasBottom - (bottommost - obj.top) });
+      });
+    } else {
+      // Single object: align to canvas bottom
+      activeObject.set({ top: canvasBottom - activeObject.height! / 2 });
+    }
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  // Distribution functions
+  const distributeHorizontally = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject || activeObject.type !== 'activeSelection') return;
+
+    const objects = (activeObject as any)._objects;
+    if (objects.length < 3) return; // Need at least 3 objects to distribute
+
+    // Sort by horizontal position
+    const sorted = [...objects].sort((a: any, b: any) => a.left - b.left);
+    const leftmost = sorted[0].left;
+    const rightmost = sorted[sorted.length - 1].left;
+    const totalSpace = rightmost - leftmost;
+    const spacing = totalSpace / (sorted.length - 1);
+
+    sorted.forEach((obj: any, index: number) => {
+      obj.set({ left: leftmost + spacing * index });
+    });
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  const distributeVertically = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    if (!activeObject || activeObject.type !== 'activeSelection') return;
+
+    const objects = (activeObject as any)._objects;
+    if (objects.length < 3) return; // Need at least 3 objects to distribute
+
+    // Sort by vertical position
+    const sorted = [...objects].sort((a: any, b: any) => a.top - b.top);
+    const topmost = sorted[0].top;
+    const bottommost = sorted[sorted.length - 1].top;
+    const totalSpace = bottommost - topmost;
+    const spacing = totalSpace / (sorted.length - 1);
+
+    sorted.forEach((obj: any, index: number) => {
+      obj.set({ top: topmost + spacing * index });
+    });
+    
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.canvasRef.fire('object:modified', { target: activeObject });
+  }, [fabricCanvas.canvasRef]);
+
+  // Group selected objects (Ctrl+G)
+  const groupObjects = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    
+    // Only group if multiple objects are selected
+    if (!activeObject || activeObject.type !== 'activeSelection') {
+      console.log('Select multiple objects to group');
+      return;
+    }
+    
+    const selection = activeObject as any;
+    const objects = selection._objects;
+    
+    if (objects.length < 2) {
+      toast.error('Select at least 2 objects to group');
+      return;
+    }
+    
+    // Create a group from the active selection
+    selection.toGroup();
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.updateCanvasObjects?.();
+    
+    // Trigger undo/redo and auto-save
+    const newGroup = fabricCanvas.canvasRef.getActiveObject();
+    if (newGroup) {
+      fabricCanvas.canvasRef.fire('object:modified', { target: newGroup });
+    }
+    
+    console.log(`Grouped ${objects.length} objects`);
+    toast.success('Objects grouped');
+  }, [fabricCanvas.canvasRef]);
+
+  // Ungroup selected group (Ctrl+Shift+G)
+  const ungroupObjects = useCallback(() => {
+    if (!fabricCanvas.canvasRef) return;
+    const activeObject = fabricCanvas.canvasRef.getActiveObject();
+    
+    // Only ungroup if a group is selected
+    if (!activeObject || activeObject.type !== 'group') {
+      console.log('Select a group to ungroup');
+      return;
+    }
+    
+    const group = activeObject as any;
+    const items = group._objects.slice(); // Copy array
+    
+    // Ungroup to active selection
+    group.toActiveSelection();
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.updateCanvasObjects?.();
+    
+    // Trigger undo/redo and auto-save
+    const newSelection = fabricCanvas.canvasRef.getActiveObject();
+    if (newSelection) {
+      fabricCanvas.canvasRef.fire('object:modified', { target: newSelection });
+    }
+    
+    console.log(`Ungrouped ${items.length} objects`);
+    toast.success('Group ungrouped');
+  }, [fabricCanvas.canvasRef]);
+
+  // Toggle lock/unlock for objects
+  const toggleLock = useCallback((object: any) => {
+    if (!fabricCanvas.canvasRef) return;
+
+    // Get current lock state from custom properties
+    const isLocked = (object as any).customProps?.locked || false;
+    const newLockState = !isLocked;
+
+    // Update lock state
+    if (!(object as any).customProps) {
+      (object as any).customProps = {};
+    }
+    (object as any).customProps.locked = newLockState;
+
+    // Set Fabric.js properties based on lock state
+    object.set({
+      selectable: !newLockState,
+      evented: !newLockState,
+      hasControls: !newLockState,
+      hasBorders: !newLockState,
+      lockMovementX: newLockState,
+      lockMovementY: newLockState,
+      lockRotation: newLockState,
+      lockScalingX: newLockState,
+      lockScalingY: newLockState,
+    });
+
+    // If we're locking the currently selected object, deselect it
+    if (newLockState && fabricCanvas.canvasRef.getActiveObject() === object) {
+      fabricCanvas.canvasRef.discardActiveObject();
+    }
+
+    fabricCanvas.canvasRef.renderAll();
+    fabricCanvas.updateCanvasObjects?.();
+
+    // Fire object:modified to integrate with undo/redo and auto-save
+    fabricCanvas.canvasRef.fire('object:modified', { target: object });
+
+    toast.success(newLockState ? 'Object locked' : 'Object unlocked');
+  }, [fabricCanvas]);
+
+  // Render grid on canvas (as overlay, not objects)
+  const renderGrid = useCallback(async () => {
+    if (!fabricCanvas.canvasRef) return;
+
+    const canvas = fabricCanvas.canvasRef;
+    
+    if (!showGrid) {
+      // Clear the overlay when grid is disabled
+      canvas.overlayImage = undefined;
+      canvas.renderAll();
+      return;
+    }
+
+    // Get canvas dimensions
+    const width = canvas.getWidth();
+    const height = canvas.getHeight();
+    
+    if (!width || !height) return;
+
+    // Convert grid size from UI value to actual canvas pixels
+    // Grid sizes: 25=0.25", 50=0.5", 100=1", 150=1.5" at 300 DPI
+    // At 300 DPI: 1 inch = 300 pixels in full resolution
+    // Our canvas is scaled down by DEFAULT_ZOOM (25%), so we need to scale the grid accordingly
+    const dpi = 300;
+    const inchSize = gridSize / 100; // Convert UI value to inches (25->0.25, 50->0.5, etc)
+    const gridSpacing = (inchSize * dpi) * (DEFAULT_ZOOM / 100); // Scale to match canvas zoom
+
+    // Create an offscreen canvas for the grid
+    const gridCanvas = document.createElement('canvas');
+    gridCanvas.width = width;
+    gridCanvas.height = height;
+    const ctx = gridCanvas.getContext('2d', { alpha: true });
+    
+    if (!ctx) return;
+
+    // Clear the canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Configure grid appearance
+    ctx.strokeStyle = '#b0b0b0'; // Medium gray for visibility
+    ctx.lineWidth = 1; // Fixed 1px lines for crispness
+    
+    // Draw vertical lines
+    ctx.beginPath();
+    for (let x = 0; x <= width; x += gridSpacing) {
+      ctx.moveTo(Math.round(x) + 0.5, 0); // +0.5 for crisp lines
+      ctx.lineTo(Math.round(x) + 0.5, height);
+    }
+    ctx.stroke();
+    
+    // Draw horizontal lines
+    ctx.beginPath();
+    for (let y = 0; y <= height; y += gridSpacing) {
+      ctx.moveTo(0, Math.round(y) + 0.5); // +0.5 for crisp lines
+      ctx.lineTo(width, Math.round(y) + 0.5);
+    }
+    ctx.stroke();
+
+    // Convert to image and set as overlay
+    try {
+      const { Image: FabricImage } = await import('fabric');
+      const dataUrl = gridCanvas.toDataURL('image/png');
+      const gridImage = await FabricImage.fromURL(dataUrl);
+      
+      gridImage.set({ 
+        opacity: 0.4,
+        selectable: false,
+        evented: false,
+        left: 0,
+        top: 0,
+        originX: 'left',
+        originY: 'top',
+      });
+      
+      canvas.overlayImage = gridImage;
+      canvas.requestRenderAll();
+    } catch (error) {
+      console.error('Error rendering grid:', error);
+    }
+  }, [fabricCanvas, showGrid, gridSize]);
+
+  // Snap object position to grid
+  const snapToGridPosition = useCallback((value: number) => {
+    return Math.round(value / gridSize) * gridSize;
+  }, [gridSize]);
+
+  // Keyboard shortcuts for group/ungroup
+  useEffect(() => {
+    const handleGroupKeys = (e: KeyboardEvent) => {
+      // Ctrl+G = Group
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && !e.shiftKey) {
+        e.preventDefault();
+        groupObjects();
+      }
+      // Ctrl+Shift+G = Ungroup
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'g') {
+        e.preventDefault();
+        ungroupObjects();
+      }
+    };
+
+    window.addEventListener('keydown', handleGroupKeys);
+    return () => window.removeEventListener('keydown', handleGroupKeys);
+  }, [groupObjects, ungroupObjects]);
+
+  // Capture canvas state on changes
+  useEffect(() => {
+    if (!fabricCanvas.canvasRef) return;
+
+    const canvas = fabricCanvas.canvasRef;
+    const handleCanvasChange = () => {
+      // Don't trigger auto-save if we're loading a design
+      if (isLoadingDesignRef.current) {
+        console.log('Skipping auto-save during design load');
+        return;
+      }
+      
+      captureCanvasState();
+      triggerAutoSave(); // Trigger auto-save on canvas changes
+    };
+
+    canvas.on('object:added', handleCanvasChange);
+    canvas.on('object:modified', handleCanvasChange);
+    canvas.on('object:removed', handleCanvasChange);
+    canvas.on('text:changed', handleCanvasChange);
+
+    return () => {
+      canvas.off('object:added', handleCanvasChange);
+      canvas.off('object:modified', handleCanvasChange);
+      canvas.off('object:removed', handleCanvasChange);
+      canvas.off('text:changed', handleCanvasChange);
+    };
+  }, [fabricCanvas.canvasRef, captureCanvasState, triggerAutoSave]);
+
+  // Handle grid rendering and snap-to-grid
+  useEffect(() => {
+    if (!fabricCanvas.canvasRef) return;
+
+    // Render grid whenever showGrid or gridSize changes
+    renderGrid();
+  }, [fabricCanvas.canvasRef, showGrid, gridSize, renderGrid]);
+
+  // Handle snap-to-grid during object movement
+  useEffect(() => {
+    if (!fabricCanvas.canvasRef) return;
+
+    const canvas = fabricCanvas.canvasRef;
+
+    const handleObjectMoving = (e: any) => {
+      if (!snapToGrid || !e.target) return;
+
+      const obj = e.target;
+      
+      // Snap position to grid
+      obj.set({
+        left: snapToGridPosition(obj.left || 0),
+        top: snapToGridPosition(obj.top || 0),
+      });
+    };
+
+    if (snapToGrid) {
+      canvas.on('object:moving', handleObjectMoving);
+    }
+
+    return () => {
+      canvas.off('object:moving', handleObjectMoving);
+    };
+  }, [fabricCanvas.canvasRef, snapToGrid, snapToGridPosition]);
 
   // Auto-open Properties panel when object selected
   useEffect(() => {
@@ -359,6 +1389,174 @@ export function CustomDesignPage() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [handleKeyDown, handleKeyUp]);
+
+  // Note: localStorage backup REMOVED for security - localStorage persists across user accounts
+  // All data now saved to database only (manual save or auto-save when 1+ objects)
+
+  // Force save on window close/refresh
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Force immediate save if there's unsaved work
+      if (fabricCanvas.canvasRef && activeVariant && designStatus.type !== 'saving') {
+        handleSave();
+      }
+      
+      // Only show warning if save is in progress or failed
+      if (designStatus.type === 'saving' || designStatus.type === 'save-error') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [fabricCanvas.canvasRef, activeVariant, handleSave, designStatus.type]);
+
+  // Load saved design on mount or when variant/view changes
+  useEffect(() => {
+    console.log('Load effect triggered:', { 
+      hasVariant: !!activeVariant, 
+      hasCanvas: !!fabricCanvas.canvasRef,
+      productId: activeVariant?.productId,
+      view: selectedView,
+      isHydrating,
+      hasUser: !!user
+    });
+    
+    // Wait for auth hydration to complete before loading
+    if (isHydrating) {
+      console.log('Skipped loadUserDesign - auth still hydrating');
+      return;
+    }
+    
+    // Only try to load if logged in and have a variant
+    if (activeVariant && fabricCanvas.canvasRef && user) {
+      console.log('Calling loadUserDesign...');
+      loadUserDesign();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeVariant?.productId, selectedView, isHydrating, user?.id]); // Intentionally minimal deps
+  
+  // Centralized toast notification handler - shows messages based on status changes
+  useEffect(() => {
+    const { type, message } = designStatus;
+    
+    switch (type) {
+      case 'loaded':
+        toast.success(message || 'Design loaded successfully');
+        // Reset to idle after showing message
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 100);
+        break;
+      case 'saved':
+        toast.success('Design saved');
+        // Reset to idle after 3 seconds
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 3000);
+        break;
+      case 'save-error':
+        toast.error(message || 'Could not save your design. Changes are backed up locally.');
+        // Reset to idle after 5 seconds
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 5000);
+        break;
+      case 'load-error':
+        toast.error(message || 'Could not load design');
+        setTimeout(() => setDesignStatus({ type: 'idle' }), 3000);
+        break;
+    }
+  }, [designStatus]);
+  
+  // Auto-open Variant Details panel on mount (whether or not there's a variant)
+  useEffect(() => {
+    setIsVariantDetailsPanelOpen(true);
+  }, []); // Run only on mount
+  
+  // Auto-open Layers panel on mount
+  useEffect(() => {
+    setActiveTab('layers');
+  }, []); // Run only on mount
+  
+  // Handle returning from preview page - restore design state
+  useEffect(() => {
+    const state = location.state as {
+      returnFromPreview?: boolean;
+      designData?: string;
+      variant?: {
+        id: string;
+        productId: string;
+        productName: string;
+        variantName: string;
+        size: string;
+        image: string;
+        retailPrice: number;
+        totalPrice: number;
+      };
+      view?: 'front' | 'back';
+      printAreaSize?: string;
+    } | null;
+
+    if (!state?.returnFromPreview || !state.designData || !state.variant) {
+      return;
+    }
+
+    console.log('🔄 Returning from preview, restoring design state');
+    
+    // Restore variant
+    setActiveVariant({
+      id: state.variant.id,
+      productId: state.variant.productId,
+      productName: state.variant.productName,
+      variantName: state.variant.variantName,
+      size: state.variant.size,
+      printOption: state.view === 'front' ? 'front' : 'back',
+      image: state.variant.image,
+      retailPrice: state.variant.retailPrice,
+      totalPrice: state.variant.totalPrice,
+    });
+    
+    // Restore size
+    setSelectedSize(state.variant.size);
+    
+    // Restore view
+    if (state.view) {
+      setSelectedView(state.view);
+    }
+    
+    // Restore print area size
+    if (state.printAreaSize) {
+      const validPresets: PrintAreaPreset[] = ['A4', 'Letter', 'Legal', 'Square', 'Custom'];
+      if (validPresets.includes(state.printAreaSize as PrintAreaPreset)) {
+        setPrintAreaSize(state.printAreaSize as PrintAreaPreset);
+      }
+    }
+    
+    // Restore canvas data after a short delay to ensure canvas is ready
+    const restoreCanvas = () => {
+      if (!fabricCanvas.canvasRef || !state.designData) {
+        console.log('Canvas not ready, retrying...');
+        setTimeout(restoreCanvas, 100);
+        return;
+      }
+      
+      try {
+        isLoadingDesignRef.current = true;
+        const canvasData = JSON.parse(state.designData);
+        fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
+          fabricCanvas.canvasRef?.renderAll();
+          console.log('✅ Canvas restored from preview state');
+          isLoadingDesignRef.current = false;
+        });
+      } catch (error) {
+        console.error('Failed to restore canvas from preview:', error);
+        isLoadingDesignRef.current = false;
+      }
+    };
+    
+    // Start restore after component mounts
+    setTimeout(restoreCanvas, 200);
+    
+  }, [location.state, fabricCanvas.canvasRef]);
   
   // Get category from navigation state
   const selectedCategory = location.state?.category || 'T-Shirt - Round Neck';
@@ -366,6 +1564,94 @@ export function CustomDesignPage() {
 
   // Fetch all customizable products
   const { products: allProducts, loading: productsLoading, error: productsError } = useCustomizableProducts();
+
+  // Load last-used variant ONLY on genuine page refresh (not category navigation)
+  useEffect(() => {
+    const loadLastUsedVariant = async () => {
+      // Wait for auth and products to load
+      if (isHydrating || !user || productsLoading || !allProducts || allProducts.length === 0) {
+        return;
+      }
+
+      // If variant already selected, skip
+      if (activeVariant) {
+        return;
+      }
+
+      // CRITICAL: Only auto-load if user came from page refresh, NOT from navigation
+      // If location.state exists, user navigated here intentionally - don't auto-load
+      if (location.state?.category || location.state?.productName || location.state?.returnFromPreview) {
+        console.log('🚫 Skipping auto-load - user navigated here intentionally');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/design/load/last-used?userId=${user.id}`, {
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          const lastProductId = result.data?.customizableProductId;
+          
+          if (lastProductId) {
+            console.log('🔄 Loading last-used variant from page refresh:', lastProductId);
+            
+            // Find the product in the loaded products
+            const product = allProducts.find(p => parseInt(p.id) === lastProductId);
+            if (product) {
+              console.log('✅ Product found:', product.name, 'Category:', product.category);
+              
+              // Get product image with proper fallback
+              const frontImage = product.images?.find((img: any) => img.type === 'front');
+              const backImage = product.images?.find((img: any) => img.type === 'back');
+              const imageUrl = frontImage?.url || backImage?.url || product.images?.[0]?.url || '/placeholder-product.png';
+              
+              const variant: ClothingVariant = {
+                id: product.id.toString(),
+                productId: product.id.toString(),
+                productName: product.name,
+                variantName: product.variant?.name || product.color?.name || product.name,
+                baseProduct: product.name,
+                image: imageUrl,
+                size: result.data.selectedSize || 'M',
+                color: product.color?.name || 'Default',
+                colorCode: product.color?.hexCode || '#FFFFFF',
+                price: product.retailPrice || 0,
+                retailPrice: product.retailPrice || 0,
+                totalPrice: product.retailPrice || 0,
+                category: product.category || 'T-Shirt',
+                printOption: result.data.selectedPrintOption || 'none',
+                isAvailable: true
+              };
+
+              setActiveVariant(variant);
+              setSelectedSize(result.data.selectedSize || 'M');
+              
+              // Validate printAreaPreset - ensure it's a valid key in PRINT_AREA_PRESETS
+              const validPresets: PrintAreaPreset[] = ['A4', 'Letter', 'Legal', 'Square', 'Custom'];
+              const presetFromAPI = result.data.printAreaPreset;
+              const validPreset = validPresets.includes(presetFromAPI as PrintAreaPreset) 
+                ? (presetFromAPI as PrintAreaPreset) 
+                : 'Letter';
+              setPrintAreaSize(validPreset);
+              
+              setProductName(product.name);
+              setProductCategory(product.category || 'T-Shirt');
+              
+              console.log('✅ Variant restored from page refresh:', variant.productName, 'Print Area:', validPreset);
+            } else {
+              console.warn('❌ Product not found in allProducts. ID:', lastProductId);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load last-used variant:', error);
+      }
+    };
+
+    loadLastUsedVariant();
+  }, [isHydrating, user, productsLoading, allProducts, activeVariant, location.state, selectedCategory]);
 
   // Filter products by exact category match
   const categoryVariants = useMemo(() => {
@@ -417,73 +1703,140 @@ export function CustomDesignPage() {
   }, [selectedProductName, selectedCategory]);
 
   const handleAddToCustomize = (product: ClothingProduct) => {
-    // Phase 3: Comprehensive variant setup
+    // Simplified for single variant
     
     // 1. Validate size selection
-    const selectedSize = selectedSizePerProduct[product.id];
     if (!selectedSize) {
       alert('⚠️ Please select a size first');
       return;
     }
     
-    // 2. Get print option (defaults to 'none' if not selected)
-    const printOption = selectedPrintPerProduct[product.id] || 'none';
-    
-    // 3. Generate unique variant ID
-    const variantId = `variant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // 4. Calculate total price
+    // 2. Calculate total price
     let totalPrice = product.retailPrice || 350;
     
     // Add print cost
-    if (printOption === 'front') {
+    if (selectedPrintOption === 'front') {
       totalPrice += (product.frontPrintCost || 100);
-    } else if (printOption === 'back') {
+    } else if (selectedPrintOption === 'back') {
       totalPrice += (product.backPrintCost || 100);
     }
     
-    // 5. Determine variant name (use variantName if available, otherwise color)
+    // 3. Determine variant name
     const variantName = product.variantName || product.color || 'Default';
     
-    // 6. Create variant object
+    // 4. Create and set active variant
+    const variantId = `variant-${Date.now()}`;
     const newVariant = {
       id: variantId,
       productId: product.id,
       productName: product.name,
       variantName: variantName,
       size: selectedSize,
-      printOption: printOption,
+      printOption: selectedPrintOption,
       image: product.image,
       retailPrice: product.retailPrice || 350,
       totalPrice: totalPrice
     };
     
-    // 7. Set as active variant
     setActiveVariant(newVariant);
     
-    // 8. Add to variants list
-    setAddedVariants(prev => [...prev, newVariant]);
+    // Set initial size selection (use the selected size or default to first available)
+    if (selectedSize) {
+      setSelectedSize(selectedSize);
+    } else if (product.sizes && product.sizes.length > 0) {
+      setSelectedSize(product.sizes[0]);
+    } else {
+      setSelectedSize('M'); // Default fallback
+    }
     
-    // 9. Auto-expand in layers panel
-    setExpandedVariantIds(prev => new Set(prev).add(variantId));
-    
-    // 10. Switch to layers tab
-    setActiveTab('layers');
-    
-    // 11. Reset selections for this product (ready for next variant)
-    setSelectedSizePerProduct(prev => {
-      const updated = { ...prev };
-      delete updated[product.id];
-      return updated;
-    });
-    setSelectedPrintPerProduct(prev => {
-      const updated = { ...prev };
-      delete updated[product.id];
-      return updated;
-    });
-    
-    // 12. Success notification
-    alert(`✅ ${product.name} added! You can now add designs to the canvas.`);
+    // 5. Close clothing panel and open variant details
+    setIsClothingPanelOpen(false);
+    setIsVariantDetailsPanelOpen(true);
+  };
+
+  // Handle Add to Cart
+  const handleAddToCart = async () => {
+    if (!activeVariant) {
+      toast.error('Please select a product variant first');
+      return;
+    }
+
+    if (!selectedSize) {
+      toast.error('Please select a size');
+      return;
+    }
+
+    if (!fabricCanvas.canvasRef) {
+      toast.error('Canvas not initialized');
+      return;
+    }
+
+    setIsAddingToCart(true);
+
+    try {
+      // 1. Export canvas design as thumbnail
+      const designDataURL = exportCanvasToDataURL(fabricCanvas.canvasRef, {
+        format: 'png',
+        quality: 0.9,
+        multiplier: 1
+      });
+
+      // 2. Upload thumbnail to Cloudinary
+      const designBlob = await (await fetch(designDataURL)).blob();
+      const formData = new FormData();
+      formData.append('image', designBlob, 'custom-design.png');
+      
+      const uploadResponse = await fetch(`/api/custom-design/upload-preview`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload design thumbnail');
+      }
+      
+      const uploadResult = await uploadResponse.json();
+      const thumbnailUrl = uploadResult?.url || '';
+
+      // 3. Get canvas JSON for customization data
+      const canvasJSON = fabricCanvas.canvasRef.toJSON();
+      
+      const customizationData = {
+        design: canvasJSON,
+        thumbnail: thumbnailUrl,
+        printOption: activeVariant.printOption,
+        printAreaSize: printAreaSize,
+        side: selectedView,
+      };
+
+      // 4. Calculate final price
+      const basePrice = activeVariant.retailPrice || 350;
+      const printCost = activeVariant.printOption === 'front' ? 50 : 
+                       activeVariant.printOption === 'back' ? 50 : 0;
+      const finalPrice = basePrice + printCost;
+
+      // 5. Add to cart
+      await addToCart(
+        activeVariant.productId,
+        `${activeVariant.productName} - ${activeVariant.variantName} (${selectedSize})`,
+        finalPrice,
+        thumbnailUrl || activeVariant.image,
+        productCategory || 'Custom Design',
+        1,
+        selectedSize,
+        activeVariant.variantName,
+        customizationData
+      );
+
+      toast.success('Added to cart successfully!');
+      
+    } catch (error) {
+      console.error('Add to cart error:', error);
+      toast.error('Failed to add to cart. Please try again.');
+    } finally {
+      setIsAddingToCart(false);
+    }
   };
 
   // Remove the hardcoded clothingProducts array - now using real data from above
@@ -859,6 +2212,15 @@ export function CustomDesignPage() {
       return;
     }
 
+    // Check object limit
+    if (!canAddMoreObjects()) {
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setValidationWarning(null);
 
     // Validate image
@@ -961,6 +2323,11 @@ export function CustomDesignPage() {
       return;
     }
 
+    // Check object limit
+    if (!canAddMoreObjects()) {
+      return;
+    }
+
     const sizeMap = {
       'Small': 24,
       'Medium': 40,
@@ -1006,6 +2373,11 @@ export function CustomDesignPage() {
       resetView: fabricCanvas.resetView,
       exportHighDPI: fabricCanvas.exportHighDPI,
     }}>
+      {/* Loading overlay when design is loading */}
+      {designStatus.type === 'loading' && (
+        <LoadingOverlay message={designStatus.message || 'Loading your design...'} />
+      )}
+      
       <div className="h-screen flex bg-gray-100 overflow-hidden fixed inset-0">
       {/* Left Vertical Toolbar - Spans full height */}
       <div className="bg-white border-r w-20 flex flex-col items-center py-6 gap-4 z-10">
@@ -1037,9 +2409,6 @@ export function CustomDesignPage() {
         {/* Top Navigation Bar */}
         <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="size-8" onClick={() => setIsPanelOpen(!isPanelOpen)}>
-              <Info className="size-4" />
-            </Button>
             <Button 
               variant="outline" 
               size="sm" 
@@ -1058,6 +2427,15 @@ export function CustomDesignPage() {
               className={`${isClothingPanelOpen ? 'bg-gray-800 text-white hover:bg-gray-700 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'}`}
             >
               Clothing Variants
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsVariantDetailsPanelOpen(!isVariantDetailsPanelOpen)}
+              className={`flex items-center gap-2 ${isVariantDetailsPanelOpen ? 'bg-gray-800 text-white hover:bg-gray-700 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'}`}
+            >
+              <Package className="size-4" />
+              Variant Details
             </Button>
             <Button
               variant="outline"
@@ -1084,18 +2462,14 @@ export function CustomDesignPage() {
 
           <div className="flex items-center gap-2">
             <Button
-              variant={'default'}
+              variant="default"
               size="sm"
-              className="bg-gray-800 hover:bg-gray-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handlePreview}
+              disabled={!activeVariant || !fabricCanvas.canvasRef}
+              title="Preview your design"
             >
-              Edit
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate('/custom-design-preview')}
-              className="hover:bg-gray-100 hover:text-gray-900"
-            >
+              <Eye className="size-4 mr-1.5" />
               Preview
             </Button>
             <Button
@@ -1116,35 +2490,61 @@ export function CustomDesignPage() {
 
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden relative">
-          {/* Product Information Panel - Printify Style - Absolute positioned overlay */}
-          {isPanelOpen && (
+          {/* Variant Details Panel - LEFT SIDE */}
+          {isVariantDetailsPanelOpen && (
             <div className="absolute left-0 top-0 bottom-0 bg-white border-r w-[320px] overflow-y-auto z-20 shadow-lg">
               <div className="flex flex-col h-full">
                 {/* Header */}
                 <div className="p-4 border-b flex items-center justify-between">
-                  <h2 className="text-lg">Product details</h2>
-                  <Button variant="ghost" size="icon" className="size-8" onClick={() => setIsPanelOpen(false)}>
+                  <h2 className="text-lg font-semibold">Variant Details</h2>
+                  <Button variant="ghost" size="icon" className="size-8" onClick={() => setIsVariantDetailsPanelOpen(false)}>
                     <X className="size-4" />
                   </Button>
                 </div>
 
                 {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                  {/* Product Image and Name */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  {!activeVariant ? (
+                    /* Empty State - No Variant Selected */
+                    <div className="flex flex-col items-center justify-center h-full space-y-4 text-center px-4">
+                      <Package className="size-16 text-gray-400" />
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-semibold">No Variant Selected</h3>
+                        <p className="text-sm text-gray-600">Choose a product variant to start customizing your design</p>
+                      </div>
+                      <Button 
+                        size="lg"
+                        className="mt-4"
+                        onClick={() => {
+                          setIsVariantDetailsPanelOpen(false);
+                          setIsClothingPanelOpen(true);
+                        }}
+                      >
+                        <Package className="size-4 mr-2" />
+                        Select Product Variant
+                      </Button>
+                    </div>
+                  ) : (
+                    /* Filled State - Variant Selected */
+                    <div className="space-y-6">
+                  {/* Image */}
                   <div className="space-y-3">
                     <div className="w-full aspect-square bg-gray-100 rounded-lg border overflow-hidden">
                       <img 
-                        src={categoryImages[selectedCategory]?.front} 
-                        alt={productName}
+                        src={activeVariant.image} 
+                        alt={activeVariant.productName}
                         className="w-full h-full object-contain"
                       />
                     </div>
-                    <div>
-                      <h3 className="mb-1">{productName || 'Product Name'}</h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Package className="size-4" />
-                        <span>Your Brand Store</span>
-                      </div>
+                  </div>
+
+                  {/* Product Name & Variant */}
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">{activeVariant.productName}</h3>
+                    <div className="text-sm text-gray-600">{activeVariant.variantName}</div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Package className="size-4" />
+                      <span>Your Brand Store</span>
                     </div>
                   </div>
 
@@ -1154,11 +2554,30 @@ export function CustomDesignPage() {
                     <span className="text-sm text-green-700">In stock</span>
                   </div>
 
+                  {/* Selected Options */}
+                  <div className="space-y-3 border-t pt-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Size</span>
+                      <span className="font-medium">{activeVariant.size}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Print Option</span>
+                      <span className="font-medium">
+                        {activeVariant.printOption === 'none' ? 'No Print' : 
+                         activeVariant.printOption === 'front' ? 'Front Only' : 'Back Only'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Retail Price</span>
+                      <span className="font-medium">₱{activeVariant.retailPrice.toFixed(2)}</span>
+                    </div>
+                  </div>
+
                   {/* Production Cost */}
                   <Collapsible open={isProductionCostOpen} onOpenChange={setIsProductionCostOpen}>
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
-                        <span className="text-sm">Production cost: PHP 800.00</span>
+                        <span className="text-sm font-medium">Total Price: ₱{activeVariant.totalPrice.toFixed(2)}</span>
                         {isProductionCostOpen ? (
                           <ChevronUp className="size-4 text-gray-500" />
                         ) : (
@@ -1169,20 +2588,24 @@ export function CustomDesignPage() {
                     <CollapsibleContent className="pt-4 space-y-3">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Blank product</span>
-                          <span>PHP 350.00</span>
+                          <span className="text-gray-600">Retail Price</span>
+                          <span>₱{activeVariant.retailPrice.toFixed(2)}</span>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Front print</span>
-                          <span>PHP 225.00</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Back print</span>
-                          <span>PHP 225.00</span>
-                        </div>
+                        {activeVariant.printOption === 'front' && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600">Front print</span>
+                            <span>Included</span>
+                          </div>
+                        )}
+                        {activeVariant.printOption === 'back' && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600">Back print</span>
+                            <span>Included</span>
+                          </div>
+                        )}
                         <div className="pt-2 border-t flex items-center justify-between">
-                          <span className="text-sm">Subtotal</span>
-                          <span className="text-sm">PHP 800.00</span>
+                          <span className="text-sm font-medium">Total</span>
+                          <span className="text-sm font-medium">₱{activeVariant.totalPrice.toFixed(2)}</span>
                         </div>
                       </div>
                     </CollapsibleContent>
@@ -1192,7 +2615,7 @@ export function CustomDesignPage() {
                   <Collapsible open={isPrintAreaOpen} onOpenChange={setIsPrintAreaOpen} className="border-t pt-6">
                     <CollapsibleTrigger asChild>
                       <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent mb-4">
-                        <span className="text-sm">Print area</span>
+                        <span className="text-sm font-medium">Print area</span>
                         {isPrintAreaOpen ? (
                           <ChevronUp className="size-4 text-gray-500" />
                         ) : (
@@ -1203,9 +2626,9 @@ export function CustomDesignPage() {
                     <CollapsibleContent className="space-y-4">
                       {/* Print Area Size Selector */}
                       <div className="space-y-2">
-                        <Label htmlFor="printAreaSize" className="text-sm text-gray-600">Print Area Size</Label>
+                        <Label htmlFor="variantPrintAreaSize" className="text-sm text-gray-600">Print Area Size</Label>
                         <Select value={printAreaSize} onValueChange={(value: PrintAreaPreset) => setPrintAreaSize(value)}>
-                          <SelectTrigger id="printAreaSize" className="w-full">
+                          <SelectTrigger id="variantPrintAreaSize" className="w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1234,6 +2657,8 @@ export function CustomDesignPage() {
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1338,19 +2763,16 @@ export function CustomDesignPage() {
                                     </div>
                                   )}
 
-                                  {/* Sizes - Now Interactive */}
+                                  {/* Sizes - Interactive */}
                                   <div className="space-y-1">
                                     <span className="text-xs text-gray-500">Select Size:<span className="text-red-500 ml-1">*</span></span>
                                     <div className="flex flex-wrap gap-1.5">
                                       {product.sizes.map((size) => {
-                                        const isSelected = selectedSizePerProduct[product.id] === size;
+                                        const isSelected = selectedSize === size;
                                         return (
                                           <button
                                             key={size}
-                                            onClick={() => setSelectedSizePerProduct(prev => ({
-                                              ...prev,
-                                              [product.id]: size
-                                            }))}
+                                            onClick={() => setSelectedSize(size)}
                                             className={`px-2 py-0.5 text-xs border rounded transition-all ${
                                               isSelected 
                                                 ? 'bg-gray-800 text-white border-gray-800 font-medium' 
@@ -1364,20 +2786,17 @@ export function CustomDesignPage() {
                                     </div>
                                   </div>
 
-                                  {/* Print Options - New */}
+                                  {/* Print Options */}
                                   <div className="space-y-1">
                                     <span className="text-xs text-gray-500">Print Option:</span>
                                     <div className="flex gap-1.5">
                                       {['none', 'front', 'back'].map((option) => {
-                                        const isSelected = (selectedPrintPerProduct[product.id] || 'none') === option;
+                                        const isSelected = selectedPrintOption === option;
                                         const optionLabel = option.charAt(0).toUpperCase() + option.slice(1);
                                         return (
                                           <button
                                             key={option}
-                                            onClick={() => setSelectedPrintPerProduct(prev => ({
-                                              ...prev,
-                                              [product.id]: option as 'none' | 'front' | 'back'
-                                            }))}
+                                            onClick={() => setSelectedPrintOption(option as 'none' | 'front' | 'back')}
                                             className={`px-3 py-1 text-xs border rounded transition-all ${
                                               isSelected 
                                                 ? 'bg-gray-800 text-white border-gray-800 font-medium' 
@@ -1718,15 +3137,15 @@ export function CustomDesignPage() {
 
           {/* My Library Panel - LEFT SIDE */}
           {isLibraryPanelOpen && (
-            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
+            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[580px] overflow-hidden z-20 shadow-xl">
               <div className="h-full flex flex-col">
                 <div className="p-5 border-b border-gray-200 bg-gray-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <h2 className="text-xl">My Library</h2>
                       <div className="flex items-center gap-2 text-sm">
-                        <div className="size-2 rounded-full bg-green-500"></div>
-                        <span className="text-gray-600">Available</span>
+                        <div className={`size-2 rounded-full ${savedDesigns.length > 0 ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                        <span className="text-gray-600">{savedDesigns.length} Saved</span>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsLibraryPanelOpen(false)}>
@@ -1736,31 +3155,70 @@ export function CustomDesignPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 min-h-0">
-                  <div className="h-full space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-xs text-gray-500">Saved Designs</p>
-                      <div className="grid grid-cols-2 gap-3">
+                  <div className="h-full space-y-6">
+                    {/* Saved Designs Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-gray-700">📁 Saved Designs</h3>
+                        {savedDesigns.length > 0 && (
+                          <span className="text-xs text-gray-500">{savedDesigns.length} design{savedDesigns.length !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                      
+                      {isLoadingDesigns ? (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        </div>
+                      ) : savedDesigns.length === 0 ? (
+                        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                          <Layers className="size-16 mx-auto mb-3 opacity-30 text-gray-400" />
+                          <p className="text-gray-600 font-medium">No saved designs yet</p>
+                          <p className="text-xs text-gray-500 mt-1">Preview your design and click "Save to Library" to save it here</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          {savedDesigns.map((design) => (
+                            <DesignCard
+                              key={design.id}
+                              design={design}
+                              onLoad={handleLoadDesign}
+                              onDelete={handleDeleteDesign}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-200"></div>
+
+                    {/* Templates Section - Coming Soon */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-gray-700">🎨 Templates</h3>
+                        <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
                         {[1, 2, 3, 4].map((item) => (
-                          <div key={item} className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
-                            <div className="size-full flex flex-col items-center justify-center p-4">
-                              <Layers className="size-12 text-gray-400 mb-2" />
-                              <p className="text-xs text-gray-600">Design {item}</p>
+                          <div 
+                            key={item} 
+                            className="aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 overflow-hidden relative group cursor-not-allowed"
+                          >
+                            <div className="size-full flex flex-col items-center justify-center p-4 opacity-40">
+                              <Package className="size-12 text-gray-400 mb-2" />
+                              <p className="text-xs text-gray-600 text-center">Template {item}</p>
+                            </div>
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Badge variant="secondary" className="text-xs">Available Soon</Badge>
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs text-gray-500">Saved Images</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[1, 2].map((item) => (
-                          <div key={item} className="aspect-square bg-gray-100 rounded-lg border-2 border-gray-200 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer">
-                            <div className="size-full flex items-center justify-center">
-                              <ImageIcon className="size-12 text-gray-400" />
-                            </div>
-                          </div>
-                        ))}
+                      
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                        <p className="font-medium mb-1">✨ Templates Coming in Phase 4</p>
+                        <p className="text-xs">Pre-designed templates will help you create amazing designs faster!</p>
                       </div>
                     </div>
                   </div>
@@ -1913,182 +3371,23 @@ export function CustomDesignPage() {
                       <X className="size-5" />
                     </Button>
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="size-2 rounded-full bg-blue-500"></div>
-                      <span className="text-gray-600">{addedVariants.length} {addedVariants.length === 1 ? 'variant' : 'variants'}</span>
-                    </div>
-                    {activeVariant && (
-                      <>
-                        <div className="text-gray-300">•</div>
-                        <div className="flex items-center gap-2">
-                          <div className="size-2 rounded-full bg-green-500"></div>
-                          <span className="text-gray-600">{fabricCanvas.canvasObjects.length} {fabricCanvas.canvasObjects.length === 1 ? 'object' : 'objects'}</span>
-                        </div>
-                      </>
-                    )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="size-2 rounded-full bg-blue-500"></div>
+                    <span className="text-gray-600">{fabricCanvas.canvasObjects.length} {fabricCanvas.canvasObjects.length === 1 ? 'object' : 'objects'}</span>
                   </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4">
-                  {/* Phase 4: Variant-based Layers Structure */}
-                  {addedVariants.length === 0 ? (
+                  {fabricCanvas.canvasObjects.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center px-6">
                       <Layers className="size-16 text-gray-300 mb-4" />
-                      <p className="text-sm text-gray-600 mb-2">No variants added yet</p>
+                      <p className="text-sm text-gray-600 mb-2">No objects yet</p>
                       <p className="text-xs text-gray-500">
-                        Add a clothing variant from "Clothing Variants" panel to start customizing
+                        Add text, images, or graphics to see them listed here
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {addedVariants.map((variant) => {
-                        const isExpanded = expandedVariantIds.has(variant.id);
-                        const isActive = activeVariant?.id === variant.id;
-                        
-                        // Get objects that belong to this variant
-                        // For now, all objects belong to the active variant
-                        // In the future, you can track object-to-variant relationships
-                        const variantObjects = isActive ? fabricCanvas.canvasObjects : [];
-                        const objectCount = variantObjects.length;
-
-                        return (
-                          <div 
-                            key={variant.id}
-                            className={`border-2 rounded-lg overflow-hidden transition-all ${
-                              isActive 
-                                ? 'border-blue-500 shadow-lg' 
-                                : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                          >
-                            {/* Variant Header */}
-                            <div 
-                              className={`p-3 transition-colors ${
-                                isActive 
-                                  ? 'bg-blue-50' 
-                                  : 'bg-white'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                {/* Expand/Collapse Button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedVariantIds(prev => {
-                                      const newSet = new Set(prev);
-                                      if (isExpanded) {
-                                        newSet.delete(variant.id);
-                                      } else {
-                                        newSet.add(variant.id);
-                                      }
-                                      return newSet;
-                                    });
-                                  }}
-                                  className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
-                                  title={isExpanded ? 'Collapse' : 'Expand'}
-                                >
-                                  <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                </button>
-                                
-                                {/* Product Image - Clickable */}
-                                <div 
-                                  onClick={(e) => handleSwitchActiveVariant(variant, e)}
-                                  className={`w-12 h-12 flex-shrink-0 bg-gray-100 rounded overflow-hidden cursor-pointer transition-opacity ${
-                                    isActive ? 'opacity-100' : 'opacity-80 hover:opacity-100'
-                                  }`}
-                                  title={isActive ? 'Active variant' : 'Click to set as active'}
-                                >
-                                  <img 
-                                    src={variant.image} 
-                                    alt={variant.productName}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-
-                                {/* Variant Info - Clickable */}
-                                <div 
-                                  onClick={(e) => handleSwitchActiveVariant(variant, e)}
-                                  className={`flex-1 min-w-0 cursor-pointer ${
-                                    isActive ? '' : 'hover:opacity-75 transition-opacity'
-                                  }`}
-                                  title={isActive ? 'Active variant' : 'Click to set as active'}
-                                >
-                                  <h4 className="text-sm font-medium truncate">{variant.productName}</h4>
-                                  <p className="text-xs text-gray-600 truncate">{variant.variantName}</p>
-                                  
-                                  {/* Badges */}
-                                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                                    {/* Size Badge */}
-                                    <span className="px-1.5 py-0.5 text-[10px] bg-gray-200 text-gray-700 rounded font-medium">
-                                      {variant.size}
-                                    </span>
-                                    
-                                    {/* Print Option Badge */}
-                                    {variant.printOption !== 'none' && (
-                                      <span className="px-1.5 py-0.5 text-[10px] bg-purple-100 text-purple-700 rounded font-medium">
-                                        {variant.printOption === 'front' ? '🖨️ Front' : '🖨️ Back'}
-                                      </span>
-                                    )}
-                                    
-                                    {/* Active Badge */}
-                                    {isActive && (
-                                      <span className="px-1.5 py-0.5 text-[10px] bg-blue-500 text-white rounded font-medium">
-                                        ✓ Active
-                                      </span>
-                                    )}
-                                    
-                                    {/* Object Count Badge */}
-                                    <span className="px-1.5 py-0.5 text-[10px] bg-green-100 text-green-700 rounded font-medium">
-                                      {objectCount} {objectCount === 1 ? 'object' : 'objects'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Price & Actions */}
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  <div className="text-right">
-                                    <p className="text-sm font-semibold text-gray-900">₱{variant.totalPrice.toFixed(2)}</p>
-                                  </div>
-                                  
-                                  {/* Action Buttons */}
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={(e) => handleDeleteVariant(variant.id, e)}
-                                      className="p-1.5 hover:bg-red-100 rounded transition-colors text-red-600 hover:text-red-700"
-                                      title="Delete variant"
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                              
-                              {/* Switch Variant CTA - Only show for inactive variants */}
-                              {!isActive && (
-                                <div className="mt-2 pt-2 border-t border-gray-200">
-                                  <button
-                                    onClick={(e) => handleSwitchActiveVariant(variant, e)}
-                                    className="w-full text-xs text-blue-600 hover:text-blue-700 font-medium py-1 hover:bg-blue-50 rounded transition-colors"
-                                  >
-                                    → Set as Active Variant
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Collapsible Body - Nested Objects */}
-                            {isExpanded && (
-                              <div className="bg-gray-50 border-t border-gray-200">
-                                {objectCount === 0 ? (
-                                  <div className="p-6 text-center">
-                                    <p className="text-xs text-gray-500">No designs added yet</p>
-                                    <p className="text-[10px] text-gray-400 mt-1">
-                                      {isActive ? 'Start adding text, images, or graphics' : 'Select this variant to add designs'}
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <div className="p-2 space-y-2">
-                                    {[...variantObjects].reverse().map((obj, index) => {
+                    <div className="space-y-2">{[...fabricCanvas.canvasObjects].reverse().map((obj, index) => {
                         const isSelected = fabricCanvas.selectedObject === obj;
                         const isExpanded = expandedLayerIds.has(obj);
                         const objectType = obj.type || 'object';
@@ -2157,10 +3456,12 @@ export function CustomDesignPage() {
                             key={actualIndex} 
                             className={`border rounded-lg overflow-hidden transition-all ${
                               isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                            }`}
+                            } ${(obj as any).customProps?.locked ? 'opacity-60 bg-gray-50' : ''}`}
                           >
                             {/* Compact Header */}
-                            <div className="flex items-center gap-2 p-2.5 bg-white hover:bg-gray-50 transition-colors">
+                            <div className={`flex items-center gap-2 p-2.5 transition-colors ${
+                              (obj as any).customProps?.locked ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'
+                            }`}>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -2191,6 +3492,23 @@ export function CustomDesignPage() {
                                   <h4 className="text-xs font-medium truncate">{getObjectLabel()}</h4>
                                 </div>
                               </div>
+                              
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleLock(obj);
+                                }}
+                                className={`p-1 hover:bg-gray-200 rounded transition-colors ${
+                                  (obj as any).customProps?.locked ? 'text-red-600' : 'text-gray-400'
+                                }`}
+                                title={(obj as any).customProps?.locked ? 'Unlock object' : 'Lock object'}
+                              >
+                                {(obj as any).customProps?.locked ? (
+                                  <Lock className="h-4 w-4" />
+                                ) : (
+                                  <Unlock className="h-4 w-4" />
+                                )}
+                              </button>
                               
                               <div className={`text-[10px] px-1.5 py-0.5 rounded ${
                                 isSelected ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
@@ -2249,13 +3567,6 @@ export function CustomDesignPage() {
                           </div>
                         );
                       })}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
                     </div>
                   )}
                 </div>
@@ -2309,13 +3620,24 @@ export function CustomDesignPage() {
             >
               {/* Design Area Box with Canvas */}
               <div
-                className="relative border-2 border-dashed border-blue-600 rounded bg-white shadow-lg design-area-box"
+                className="relative rounded bg-white shadow-lg design-area-box"
                 style={{
                   width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
                   height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
+                  // Use outline instead of border - doesn't affect layout, stays outside
+                  outline: `${2 / canvasScale}px dashed #2563eb`,
+                  outlineOffset: `${-2 / canvasScale}px`, // Position it at the edge
                 }}
               >
-                <div className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded" style={{ pointerEvents: 'none' }}>
+                <div 
+                  className="absolute -top-6 left-0 text-xs bg-blue-600 text-white px-2 py-0.5 rounded" 
+                  style={{ 
+                    pointerEvents: 'none',
+                    // Inverse scale the label to keep it readable
+                    transform: `scale(${1 / canvasScale})`,
+                    transformOrigin: 'left bottom',
+                  }}
+                >
                   Design Area - {PRINT_AREA_PRESETS[printAreaSize].label}
                 </div>
                 
@@ -2335,7 +3657,7 @@ export function CustomDesignPage() {
             {/* Front/Back Toggle - At bottom with transparent container */}
             <div className="py-4 flex items-center justify-center gap-3">
               <button
-                onClick={() => setSelectedView('front')}
+                onClick={() => handleViewSwitch('front')}
                 className={`px-6 py-2.5 rounded-full transition-all shadow-md ${
                   selectedView === 'front'
                     ? 'bg-gray-800 text-white'
@@ -2345,7 +3667,7 @@ export function CustomDesignPage() {
                 Front side
               </button>
               <button
-                onClick={() => setSelectedView('back')}
+                onClick={() => handleViewSwitch('back')}
                 className={`px-6 py-2.5 rounded-full transition-all shadow-md ${
                   selectedView === 'back'
                     ? 'bg-gray-800 text-white'
@@ -2361,6 +3683,195 @@ export function CustomDesignPage() {
         {/* Bottom Action Bar */}
         <div className="bg-white border-t px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            {/* Undo/Redo Buttons */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={handleRedo}
+              disabled={historyIndex >= historyStack.length - 1}
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo className="size-4" />
+            </Button>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Preview Button */}
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 px-3 bg-blue-600 hover:bg-blue-700"
+              onClick={handlePreview}
+              disabled={!activeVariant || !fabricCanvas.canvasRef}
+              title="Preview your design"
+            >
+              <Eye className="size-4 mr-1.5" />
+              Preview
+            </Button>
+            
+            {/* Auto-save Status Indicator */}
+            {(designStatus.type === 'saving' || designStatus.type === 'saved' || designStatus.type === 'save-error') && (
+              <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
+                designStatus.type === 'saving' ? 'bg-blue-50 text-blue-700' :
+                designStatus.type === 'saved' ? 'bg-green-50 text-green-700' :
+                'bg-red-50 text-red-700'
+              }`}>
+                {designStatus.type === 'saving' && (
+                  <>
+                    <div className="size-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Auto-saving...</span>
+                  </>
+                )}
+                {designStatus.type === 'saved' && (
+                  <>
+                    <Check className="size-3" />
+                    <span>Auto-saved</span>
+                  </>
+                )}
+                {designStatus.type === 'save-error' && (
+                  <>
+                    <AlertCircle className="size-3" />
+                    <span>Failed</span>
+                  </>
+                )}
+              </div>
+            )}
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Alignment Tools */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignLeft}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Left"
+            >
+              <AlignLeft className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignCenter}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Center"
+            >
+              <AlignCenter className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignRight}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Right"
+            >
+              <AlignRight className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignTop}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Top"
+            >
+              <AlignVerticalJustifyCenter className="size-4" style={{ transform: 'rotate(90deg)' }} />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignMiddle}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Middle"
+            >
+              <AlignVerticalJustifyCenter className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={alignBottom}
+              disabled={!fabricCanvas.selectedObject}
+              title="Align Bottom"
+            >
+              <AlignVerticalJustifyCenter className="size-4" style={{ transform: 'rotate(-90deg)' }} />
+            </Button>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Distribution Tools */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={distributeHorizontally}
+              disabled={!fabricCanvas.selectedObject || fabricCanvas.canvasRef?.getActiveObject()?.type !== 'activeSelection'}
+              title="Distribute Horizontally"
+            >
+              <AlignHorizontalSpaceAround className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-8"
+              onClick={distributeVertically}
+              disabled={!fabricCanvas.selectedObject || fabricCanvas.canvasRef?.getActiveObject()?.type !== 'activeSelection'}
+              title="Distribute Vertically"
+            >
+              <AlignVerticalSpaceAround className="size-4" />
+            </Button>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
+            {/* Grid & Snap Tools */}
+            <Button
+              variant={showGrid ? "default" : "outline"}
+              size="icon"
+              className="size-8"
+              onClick={() => setShowGrid(!showGrid)}
+              title="Toggle Grid"
+            >
+              <Grid3x3 className="size-4" />
+            </Button>
+            <Button
+              variant={snapToGrid ? "default" : "outline"}
+              size="icon"
+              className="size-8"
+              onClick={() => setSnapToGrid(!snapToGrid)}
+              disabled={!showGrid}
+              title="Snap to Grid"
+            >
+              <Maximize className="size-4" />
+            </Button>
+            <Select value={gridSize.toString()} onValueChange={(value) => setGridSize(Number(value))}>
+              <SelectTrigger className="h-8 w-[80px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">0.25"</SelectItem>
+                <SelectItem value="50">0.5"</SelectItem>
+                <SelectItem value="100">1"</SelectItem>
+                <SelectItem value="150">1.5"</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+            
             <Button
               variant="outline"
               size="icon"
@@ -2407,9 +3918,49 @@ export function CustomDesignPage() {
             </select>
           </div>
 
-          <Button size="sm" className="bg-green-600 hover:bg-green-700">
-            Save Product
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Size Selector */}
+            {activeVariant && (
+              <Select value={selectedSize} onValueChange={setSelectedSize}>
+                <SelectTrigger className="h-9 w-[100px]">
+                  <SelectValue placeholder="Size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeVariant.size ? (
+                    <SelectItem value={activeVariant.size}>{activeVariant.size}</SelectItem>
+                  ) : (
+                    <>
+                      <SelectItem value="S">S</SelectItem>
+                      <SelectItem value="M">M</SelectItem>
+                      <SelectItem value="L">L</SelectItem>
+                      <SelectItem value="XL">XL</SelectItem>
+                      <SelectItem value="2XL">2XL</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+            
+            {/* Add to Cart Button */}
+            <Button 
+              size="sm" 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={handleAddToCart}
+              disabled={!activeVariant || !selectedSize || isAddingToCart}
+            >
+              {isAddingToCart ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="size-4 mr-2" />
+                  Add to Cart
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
       </div>

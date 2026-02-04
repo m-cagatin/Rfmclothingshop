@@ -16,6 +16,10 @@ export enum CloudinaryFolder {
   CUSTOMIZABLE_PRODUCTS_BACK = 'Customizable Products/Back View IMG',
   CUSTOMIZABLE_PRODUCTS_ADDITIONAL = 'Customizable Products/Additional IMG',
   CUSTOMIZABLE_PRODUCTS_VARIANT = 'Customizable Products/Variant IMG',
+  CATALOG_PRODUCTS_FRONT = 'Catalog Products/Front View IMG',
+  CATALOG_PRODUCTS_BACK = 'Catalog Products/Back View IMG',
+  CATALOG_PRODUCTS_ADDITIONAL = 'Catalog Products/Additional IMG',
+  CATALOG_PRODUCTS_VARIANT = 'Catalog Products/Variant IMG',
 }
 
 interface UploadResult {

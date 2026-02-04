@@ -166,9 +166,10 @@ export function useCanvasZoomPan(): UseCanvasZoomPanReturn {
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
     if (e.code === 'Space') {
       setSpaceKeyPressed(false);
-      endPan();
+      setIsSpacePanning(false);
+      setIsPanning(false);
     }
-  }, [endPan]);
+  }, []);
 
   const handleWheel = useCallback((e: WheelEvent | React.WheelEvent) => {
     // Ctrl/Cmd + Wheel = Zoom on canvas
@@ -205,7 +206,8 @@ export function useCanvasZoomPan(): UseCanvasZoomPanReturn {
   }, [panOffset]);
 
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isPanningCanvas || (isPanning && spaceKeyPressed)) {
+    // Only handle regular canvas pan, not space pan (overlay handles that)
+    if (isPanningCanvas) {
       const deltaX = e.clientX - panStartRef.current.x;
       const deltaY = e.clientY - panStartRef.current.y;
       
@@ -218,15 +220,18 @@ export function useCanvasZoomPan(): UseCanvasZoomPanReturn {
       
       setPanOffset(newOffset);
     }
-  }, [isPanningCanvas, isPanning, spaceKeyPressed, canvasScale, applyBoundaries]);
+  }, [isPanningCanvas, canvasScale, applyBoundaries]);
 
   const handleCanvasMouseUp = useCallback(() => {
     setIsPanningCanvas(false);
   }, []);
 
-  // Space overlay handlers - force pan without canvas check
+  // Space overlay handlers - simplified for space+drag pan
   const handleOverlayMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!spaceKeyPressed) return;
+    
     e.preventDefault();
+    e.stopPropagation();
     setIsSpacePanning(true);
     panStartRef.current = {
       x: e.clientX,
@@ -234,13 +239,12 @@ export function useCanvasZoomPan(): UseCanvasZoomPanReturn {
       offsetX: panOffset.x,
       offsetY: panOffset.y
     };
-  }, [panOffset]);
+  }, [spaceKeyPressed, panOffset]);
 
   const handleOverlayMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!panStartRef.current.x && !panStartRef.current.y) {
-      return;
-    }
+    if (!isSpacePanning) return;
     
+    e.preventDefault();
     const deltaX = e.clientX - panStartRef.current.x;
     const deltaY = e.clientY - panStartRef.current.y;
     
@@ -251,7 +255,7 @@ export function useCanvasZoomPan(): UseCanvasZoomPanReturn {
     );
     
     setPanOffset(newOffset);
-  }, [canvasScale, applyBoundaries]);
+  }, [isSpacePanning, canvasScale, applyBoundaries]);
 
   const handleOverlayMouseUp = useCallback(() => {
     setIsSpacePanning(false);

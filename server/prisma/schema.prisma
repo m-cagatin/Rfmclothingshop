@@ -20,20 +20,22 @@ model RefreshToken {
 }
 
 model User {
-  id             String         @id
-  name           String
-  email          String         @unique
-  phone          String?
-  passwordHash   String?
-  role           User_role      @default(customer)
-  emailVerified  Boolean        @default(false)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @default(now())
-  googleId       String?        @unique
-  profilePicture String?
-  RefreshToken   RefreshToken[]
-  UserCart       UserCart[]
-  UserFavorite   UserFavorite[]
+  id                  String                @id
+  name                String
+  email               String                @unique
+  phone               String?
+  passwordHash        String?
+  role                User_role             @default(customer)
+  emailVerified       Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @default(now())
+  googleId            String?               @unique
+  profilePicture      String?
+  RefreshToken        RefreshToken[]
+  user_current_design user_current_design[]
+  user_saved_designs  user_saved_designs[]
+  UserCart            UserCart[]
+  UserFavorite        UserFavorite[]
 }
 
 model Users {
@@ -72,6 +74,7 @@ model cart_items {
   color              String?           @db.VarChar(50)
   unit_price         Decimal           @db.Decimal(10, 2)
   customization_data Json?
+  custom_design_id   Int?
   created_at         DateTime?         @default(now()) @db.Timestamp(0)
   updated_at         DateTime?         @default(now()) @db.Timestamp(0)
   customer_accounts  customer_accounts @relation(fields: [customer_id], references: [CustomerId], onDelete: Cascade, onUpdate: NoAction, map: "cart_items_ibfk_1")
@@ -80,6 +83,7 @@ model cart_items {
   @@unique([customer_id, product_id, size, color], map: "unique_cart_item")
   @@index([customer_id], map: "idx_customer_id")
   @@index([product_id], map: "product_id")
+  @@index([custom_design_id], map: "idx_custom_design_id")
 }
 
 model catalog_clothing {
@@ -199,11 +203,61 @@ model customizable_products {
   status                      customizable_products_status?               @default(active)
   customizable_product_images customizable_product_images[]
   customizable_product_stock  customizable_product_stock[]
+  user_current_design         user_current_design[]
+  user_saved_designs          user_saved_designs[]
 
   @@index([category], map: "idx_category")
   @@index([color_name], map: "idx_color_name")
   @@index([gender], map: "idx_gender")
   @@index([variant_name], map: "idx_variant_name")
+}
+
+model user_current_design {
+  id                       Int                   @id @default(autoincrement())
+  user_id                  String
+  customizable_product_id  Int
+  selected_size            String                @db.VarChar(50)
+  selected_print_option    String                @default("none") @db.VarChar(20)
+  print_area_preset        String                @default("Letter") @db.VarChar(50)
+  front_canvas_json        String?               @db.Text
+  back_canvas_json         String?               @db.Text
+  front_thumbnail_url      String?               @db.VarChar(500)
+  back_thumbnail_url       String?               @db.VarChar(500)
+  last_saved_at            DateTime              @default(now())
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @default(now())
+  customizable_products    customizable_products @relation(fields: [customizable_product_id], references: [id], onDelete: Cascade)
+  user                     User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, customizable_product_id], map: "unique_user_product")
+  @@index([user_id], map: "idx_user_id")
+  @@index([customizable_product_id], map: "idx_product_id")
+  @@index([last_saved_at], map: "idx_last_saved")
+}
+
+model user_saved_designs {
+  id                       Int                   @id @default(autoincrement())
+  user_id                  String
+  customizable_product_id  Int
+  design_name              String                @db.VarChar(255)
+  selected_size            String                @db.VarChar(50)
+  selected_print_option    String                @default("none") @db.VarChar(20)
+  print_area_preset        String                @default("Letter") @db.VarChar(50)
+  front_canvas_json        String?               @db.Text
+  back_canvas_json         String?               @db.Text
+  front_thumbnail_url      String?               @db.VarChar(500)
+  back_thumbnail_url       String?               @db.VarChar(500)
+  is_template              Boolean               @default(false)
+  tags                     Json?
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @default(now())
+  customizable_products    customizable_products @relation(fields: [customizable_product_id], references: [id], onDelete: Cascade)
+  user                     User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_user_saved_designs_user_id")
+  @@index([customizable_product_id], map: "idx_user_saved_designs_product_id")
+  @@index([created_at], map: "idx_user_saved_designs_created_at")
+  @@index([is_template], map: "idx_user_saved_designs_is_template")
 }
 
 model expenses {
@@ -446,19 +500,22 @@ model canvas_patterns {
 }
 
 model UserCart {
-  id          String   @id @default(uuid())
-  userId      String
-  productId   String   @db.VarChar(255)
-  productName String   @db.VarChar(255)
-  price       Decimal  @db.Decimal(10, 2)
-  image       String?  @db.VarChar(500)
-  category    String?  @db.VarChar(100)
-  quantity    Int      @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid())
+  userId            String
+  productId         String   @db.VarChar(255)
+  productName       String   @db.VarChar(255)
+  price             Decimal  @db.Decimal(10, 2)
+  image             String?  @db.VarChar(500)
+  category          String?  @db.VarChar(100)
+  quantity          Int      @default(1)
+  size              String?  @db.VarChar(20)
+  color             String?  @db.VarChar(50)
+  customizationData Json?
+  customDesignId    Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  User              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, productId])
   @@index([userId])
 }
 

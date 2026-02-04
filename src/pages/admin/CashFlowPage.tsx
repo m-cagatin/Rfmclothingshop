@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+const API_BASE = import.meta.env['VITE_API_BASE'] || 'http://localhost:4000';
 
 interface CashflowEntry {
   id: number;
@@ -137,7 +137,7 @@ export function CashFlowPage() {
   // Prepare chart data from transactions (last 6 months)
   const prepareChartData = () => {
     const now = new Date();
-    const months = [];
+    const months: Array<{ month: string; income: number; expenses: number; profit: number }> = [];
     for (let i = 5; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
       months.push({

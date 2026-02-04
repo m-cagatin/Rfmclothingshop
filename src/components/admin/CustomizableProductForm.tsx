@@ -39,17 +39,6 @@ const CATEGORIES = [
   'Shorts',
   'Warmers',
   'Varsity Jacket',
-  'Pre-Designed T-Shirt - Chinese Collar',
-  'Pre-Designed T-Shirt - V-Neck',
-  'Pre-Designed T-Shirt - Round Neck',
-  'Pre-Designed Jogging Pants',
-  'Pre-Designed Polo Shirt',
-  'Pre-Designed Sando (Jersey) - V-Neck',
-  'Pre-Designed Sando (Jersey) - Round Neck',
-  'Pre-Designed Sando (Jersey) - NBA Cut',
-  'Pre-Designed Shorts',
-  'Pre-Designed Warmers',
-  'Pre-Designed Varsity Jacket',
 ];
 const TYPES = ['Unisex', 'Men', 'Women', 'Kids'];
 const FIT_TYPES = [

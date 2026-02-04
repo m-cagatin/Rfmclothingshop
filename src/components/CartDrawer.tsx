@@ -12,6 +12,17 @@ export interface CartItem {
   price: number;
   quantity: number;
   image: string;
+  // Customization fields
+  size?: string;
+  color?: string;
+  printOption?: 'none' | 'front' | 'back' | 'both';
+  customizationData?: {
+    productId: number;
+    frontDesignUrl?: string;
+    backDesignUrl?: string;
+    frontCanvasJson?: string;
+    backCanvasJson?: string;
+  };
 }
 
 interface CartDrawerProps {

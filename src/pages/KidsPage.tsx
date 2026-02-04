@@ -2,6 +2,7 @@ import { ProductCard } from '../components/ProductCard';
 import { Button } from '../components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
 import { FavoriteItem } from '../components/FavoritesDrawer';
+import { useCatalogProductsCustomer } from '../hooks/useCatalogProductsCustomer';
 
 interface KidsPageProps {
   onAddToCart: (productId: string) => void;
@@ -10,7 +11,16 @@ interface KidsPageProps {
 }
 
 export function KidsPage({ onAddToCart, onToggleFavorite, favorites = [] }: KidsPageProps) {
-  // Mock product data - kids' collection
+  const { products, loading } = useCatalogProductsCustomer('Kids');
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500">Loading products...</p>
+      </div>
+    );
+  }
+
   const kidsProducts = [
     {
       id: 'k1',
@@ -59,7 +69,7 @@ export function KidsPage({ onAddToCart, onToggleFavorite, favorites = [] }: Kids
           </div>
           
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">{kidsProducts.length} products</p>
+            <p className="text-sm text-gray-600">{products.length} products</p>
             <Button variant="outline" size="sm">
               <SlidersHorizontal className="mr-2 size-4" />
               Filters
@@ -71,7 +81,7 @@ export function KidsPage({ onAddToCart, onToggleFavorite, favorites = [] }: Kids
       {/* Products Grid */}
       <section className="container mx-auto px-4 py-12 md:px-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {kidsProducts.map((product) => (
+          {products.map((product) => (
             <ProductCard
               key={product.id}
               {...product}

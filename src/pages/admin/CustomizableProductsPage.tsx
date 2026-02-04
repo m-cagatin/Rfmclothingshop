@@ -56,7 +56,6 @@ export function CustomizableProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
-  const [showPreDesignedOnly, setShowPreDesignedOnly] = useState(false);
 
   // Get products by status first
   const statusFilteredProducts = getProductsByStatus(activeTab);
@@ -75,11 +74,6 @@ export function CustomizableProductsPage() {
     
     // Type filter
     if (selectedType !== 'all' && product.type !== selectedType) {
-      return false;
-    }
-    
-    // Pre-Designed filter
-    if (showPreDesignedOnly && !product.category.startsWith('Pre-Designed')) {
       return false;
     }
     
@@ -177,7 +171,6 @@ export function CustomizableProductsPage() {
     activeTab !== 'active',
     selectedCategory !== 'all',
     selectedType !== 'all',
-    showPreDesignedOnly
   ].filter(Boolean).length;
 
   return (
@@ -280,17 +273,6 @@ export function CustomizableProductsPage() {
                         <SelectItem value="Shorts">Shorts</SelectItem>
                         <SelectItem value="Warmers">Warmers</SelectItem>
                         <SelectItem value="Varsity Jacket">Varsity Jacket</SelectItem>
-                        <SelectItem value="Pre-Designed T-Shirt - Chinese Collar">Pre-Designed T-Shirt - Chinese Collar</SelectItem>
-                        <SelectItem value="Pre-Designed T-Shirt - V-Neck">Pre-Designed T-Shirt - V-Neck</SelectItem>
-                        <SelectItem value="Pre-Designed T-Shirt - Round Neck">Pre-Designed T-Shirt - Round Neck</SelectItem>
-                        <SelectItem value="Pre-Designed Jogging Pants">Pre-Designed Jogging Pants</SelectItem>
-                        <SelectItem value="Pre-Designed Polo Shirt">Pre-Designed Polo Shirt</SelectItem>
-                        <SelectItem value="Pre-Designed Sando (Jersey) - V-Neck">Pre-Designed Sando (Jersey) - V-Neck</SelectItem>
-                        <SelectItem value="Pre-Designed Sando (Jersey) - Round Neck">Pre-Designed Sando (Jersey) - Round Neck</SelectItem>
-                        <SelectItem value="Pre-Designed Sando (Jersey) - NBA Cut">Pre-Designed Sando (Jersey) - NBA Cut</SelectItem>
-                        <SelectItem value="Pre-Designed Shorts">Pre-Designed Shorts</SelectItem>
-                        <SelectItem value="Pre-Designed Warmers">Pre-Designed Warmers</SelectItem>
-                        <SelectItem value="Pre-Designed Varsity Jacket">Pre-Designed Varsity Jacket</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -312,18 +294,6 @@ export function CustomizableProductsPage() {
                     </Select>
                   </div>
 
-                  {/* Pre-Designed Toggle */}
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">Pre-Designed Only</label>
-                    <Button
-                      size="sm"
-                      variant={showPreDesignedOnly ? 'default' : 'outline'}
-                      onClick={() => setShowPreDesignedOnly(!showPreDesignedOnly)}
-                      className={showPreDesignedOnly ? 'bg-purple-600 hover:bg-purple-700' : ''}
-                    >
-                      {showPreDesignedOnly ? 'ON' : 'OFF'}
-                    </Button>
-                  </div>
                 </div>
 
                 {/* Clear Filters Button */}
@@ -334,7 +304,6 @@ export function CustomizableProductsPage() {
                       setSearchQuery('');
                       setSelectedCategory('all');
                       setSelectedType('all');
-                      setShowPreDesignedOnly(false);
                       setActiveTab('active');
                     }}
                     className="w-full"
@@ -385,12 +354,6 @@ export function CustomizableProductsPage() {
               <Badge variant="secondary" className="gap-1">
                 Type: {selectedType}
                 <X className="size-3 cursor-pointer" onClick={() => setSelectedType('all')} />
-              </Badge>
-            )}
-            {showPreDesignedOnly && (
-              <Badge variant="secondary" className="bg-purple-100 text-purple-700 gap-1">
-                Pre-Designed Only
-                <X className="size-3 cursor-pointer" onClick={() => setShowPreDesignedOnly(false)} />
               </Badge>
             )}
           </div>

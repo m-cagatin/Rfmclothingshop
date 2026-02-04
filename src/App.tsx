@@ -17,6 +17,7 @@ import { TrackOrderPage } from "./pages/TrackOrderPage";
 import { PaymentVerificationPage } from "./pages/admin/PaymentVerificationPage";
 import { OrdersPage } from "./pages/admin/OrdersPage";
 import { CustomizableProductsPage } from "./pages/admin/CustomizableProductsPage";
+import { CatalogProductsPage } from "./pages/admin/CatalogProductsPage";
 import { CanvasResourcesPage } from "./pages/admin/CanvasResourcesPage";
 import { EmployeesPage } from "./pages/admin/EmployeesPage";
 import { InventoryPage } from "./pages/admin/InventoryPage";
@@ -37,6 +38,7 @@ import {
 } from "react-router-dom";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CartDrawer, CartItem } from "./components/CartDrawer";
 import {
   FavoritesDrawer,
@@ -50,7 +52,7 @@ function ProtectedRoute({
   children,
   onRequireAuth,
 }: {
-  children: JSX.Element;
+  children: React.ReactElement;
   onRequireAuth: () => void;
 }) {
   const { isLoggedIn, isHydrating } = useAuth();
@@ -77,7 +79,7 @@ function AdminRoute({
   children,
   onRequireAuth,
 }: {
-  children: JSX.Element;
+  children: React.ReactElement;
   onRequireAuth: () => void;
 }) {
   const { isLoggedIn, user, isHydrating } = useAuth();
@@ -115,13 +117,54 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
     location.pathname !== "/custom-design-preview" &&
     !location.pathname.startsWith("/admin");
 
-  const handleAddToCart = (productId: string, quantity: number = 1) => {
+  const handleAddToCart = async (productId: string, quantity: number = 1, size?: string, color?: string) => {
+    // Try to get product from catalog API first
+    try {
+      const response = await fetch(`http://localhost:4000/api/catalog-products/${productId}`);
+      if (response.ok) {
+        const catalogProduct = await response.json();
+        addToCartHook(
+          catalogProduct.product_id.toString(), 
+          catalogProduct.product_name, 
+          catalogProduct.base_price, 
+          catalogProduct.product_images[0]?.image_url || '', 
+          catalogProduct.category, 
+          quantity,
+          size,
+          color
+        );
+        return;
+      }
+    } catch (error) {
+      console.log('Not a catalog product, checking mock data');
+    }
+    
+    // Fallback to mock product data
     const product = getProductById(productId);
     if (!product) return;
-    addToCartHook(productId, product.name, product.price, product.image, product.category, quantity);
+    addToCartHook(productId, product.name, product.price, product.image, product.category, quantity, size, color);
   };
 
-  const handleToggleFavorite = (productId: string) => {
+  const handleToggleFavorite = async (productId: string) => {
+    // Try to get product from catalog API first
+    try {
+      const response = await fetch(`http://localhost:4000/api/catalog-products/${productId}`);
+      if (response.ok) {
+        const catalogProduct = await response.json();
+        toggleFavorite(
+          catalogProduct.product_id.toString(), 
+          catalogProduct.product_name, 
+          catalogProduct.base_price, 
+          catalogProduct.product_images[0]?.image_url || '', 
+          catalogProduct.category
+        );
+        return;
+      }
+    } catch (error) {
+      console.log('Not a catalog product, checking mock data');
+    }
+    
+    // Fallback to mock product data
     const product = getProductById(productId);
     if (!product) return;
     toggleFavorite(productId, product.name, product.price, product.image, product.category);
@@ -171,7 +214,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                 onAddToCart={handleAddToCart}
                 onToggleFavorite={handleToggleFavorite}
                 favorites={favorites}
-                isFavorited={isFavorited}
               />
             } />
             <Route
@@ -181,7 +223,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -192,7 +233,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -203,7 +243,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -214,7 +253,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -225,7 +263,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                   onAddToCart={handleAddToCart}
                   onToggleFavorite={handleToggleFavorite}
                   favorites={favorites}
-                  isFavorited={isFavorited}
                 />
               }
             />
@@ -239,7 +276,19 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                 />
               }
             />
-            <Route path="/custom-design" element={<CustomDesignPage />} />
+            <Route 
+              path="/custom-design" 
+              element={
+                <ErrorBoundary 
+                  fallbackMessage="The design editor encountered an error. Your work may have been auto-saved."
+                  onReset={() => {
+                    localStorage.removeItem('fabricCanvas');
+                  }}
+                >
+                  <CustomDesignPage />
+                </ErrorBoundary>
+              } 
+            />
             <Route path="/custom-design-preview" element={<CustomDesignPreviewPage />} />
             <Route path="/custom-products" element={<CustomProductsPage />} />
             <Route path="/custom-product/:id" element={<CustomProductDetailsPage />} />
@@ -285,7 +334,7 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
               path="/admin/products"
               element={
                 <AdminRoute onRequireAuth={() => setIsAuthOpen(true)}>
-                  <CustomizableProductsPage />
+                  <CatalogProductsPage />
                 </AdminRoute>
               }
             />

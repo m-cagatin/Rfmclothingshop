@@ -41,7 +41,9 @@ export function useFabricCanvas(
       backgroundColor: 'transparent',
       selection: true,
       preserveObjectStacking: true,
-      enableRetinaScaling: false, // Prevent automatic scaling that might interfere
+      enableRetinaScaling: false, // Prevent automatic scaling
+      // Keep controls crisp at any zoom level
+      controlsAboveOverlay: true,
     });
 
     canvasRef.current = canvas;
@@ -231,13 +233,14 @@ export function useFabricCanvas(
     });
   }, [updateCanvasObjects]);
 
-  // Set zoom
+  // Set zoom - keep canvas at 1.0, use CSS transform for visual zoom
   const setZoom = useCallback((zoomLevel: number) => {
     if (!canvasRef.current) return;
 
     const zoom = Math.max(0.1, Math.min(3, zoomLevel));
-    canvasRef.current.setZoom(zoom);
-    canvasRef.current.renderAll();
+    
+    // Don't zoom the canvas itself - keep at 1.0 for crisp controls
+    // The parent container will handle visual zoom via CSS transform
     setZoomLevel(zoom);
   }, []);
 
@@ -245,10 +248,9 @@ export function useFabricCanvas(
   const resetView = useCallback(() => {
     if (!canvasRef.current) return;
 
-    canvasRef.current.setZoom(1);
-    canvasRef.current.viewportTransform = [1, 0, 0, 1, 0, 0];
-    canvasRef.current.renderAll();
+    // Reset zoom level
     setZoomLevel(1);
+    canvasRef.current.renderAll();
   }, []);
 
   // Export high DPI (will be expanded in Phase 4)
