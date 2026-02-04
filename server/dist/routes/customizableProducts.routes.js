@@ -141,6 +141,21 @@ router.patch('/:id/status', async (req, res) => {
     }
 });
 /**
+ * DELETE /api/customizable-products
+ * Clear all products
+ * NOTE: This route must come before /:id to avoid route conflicts
+ */
+router.delete('/', async (req, res) => {
+    try {
+        const result = await customizableProductsService.clearAllProducts();
+        res.json({ message: `Successfully deleted ${result.deletedCount} products`, deletedCount: result.deletedCount });
+    }
+    catch (error) {
+        console.error('Error clearing all products:', error);
+        res.status(500).json({ error: 'Failed to clear all products' });
+    }
+});
+/**
  * DELETE /api/customizable-products/:id
  * Delete a product
  */
