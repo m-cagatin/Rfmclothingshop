@@ -59,15 +59,17 @@ interface Order {
 export function OrderTrackingPage() {
   const navigate = useNavigate();
   const { orderId } = useParams();
-  const { user, isHydrating } = useAuth();
+  const { user, isHydrating, openLoginModal } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState<'login' | 'forbidden' | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
-      
-      // If orderId is provided, try to fetch that specific order
+      setAccessDenied(null);
+
+      // If orderId is provided, try to fetch that specific order (only the customer who placed it can see it)
       if (orderId) {
         try {
           const response = await fetch(`${API_BASE}/api/orders/${orderId}`, {
@@ -79,27 +81,33 @@ export function OrderTrackingPage() {
             setOrders([order]);
             setLoading(false);
             return;
-          } else if (response.status === 404) {
-            // Order not found in database - it was deleted
-            // Don't fall back to localStorage, show order not found
-            console.log('Order not found in database:', orderId);
+          }
+          if (response.status === 401) {
+            setOrders([]);
+            setAccessDenied('login');
+            setLoading(false);
+            return;
+          }
+          if (response.status === 403) {
+            setOrders([]);
+            setAccessDenied('forbidden');
+            setLoading(false);
+            return;
+          }
+          if (response.status === 404) {
             setOrders([]);
             setLoading(false);
-            
-            // Clean up localStorage to remove the deleted order
             try {
               const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
               const filteredOrders = storedOrders.filter((o: any) => o.id !== orderId);
               localStorage.setItem('orders', JSON.stringify(filteredOrders));
             } catch (e) {
-              // Ignore localStorage errors
+              // Ignore
             }
-            
             return;
           }
         } catch (error) {
           console.error('Error fetching single order:', error);
-          // Network error - don't fall back to localStorage for specific order lookups
           setOrders([]);
           setLoading(false);
           return;
@@ -326,12 +334,53 @@ export function OrderTrackingPage() {
   }
 
   if (displayOrders.length === 0) {
+    // Access denied: must log in or not the order owner
+    if (accessDenied === 'login') {
+      return (
+        <div className="container mx-auto px-4 py-20 text-center max-w-md mx-auto">
+          <Package className="size-16 mx-auto mb-4 text-gray-400" />
+          <h2 className="mb-4">Log in to view this order</h2>
+          <p className="text-gray-600 mb-6">
+            Only the account that placed the order can view its tracking. Please log in with the email you used when placing the order.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button onClick={() => navigate('/')} variant="outline">
+              Go to Home
+            </Button>
+            <Button
+              className="bg-black text-white hover:bg-black/90"
+              onClick={() => openLoginModal()}
+            >
+              Log in
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (accessDenied === 'forbidden') {
+      return (
+        <div className="container mx-auto px-4 py-20 text-center max-w-md mx-auto">
+          <Package className="size-16 mx-auto mb-4 text-gray-400" />
+          <h2 className="mb-4">You can&apos;t view this order</h2>
+          <p className="text-gray-600 mb-6">
+            This order belongs to another customer. You can only view orders placed with your account.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button variant="outline" onClick={() => navigate('/order-tracking')}>
+              View my orders
+            </Button>
+            <Button onClick={() => navigate('/')}>Go to Home</Button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="container mx-auto px-4 py-20 text-center">
         <Package className="size-16 mx-auto mb-4 text-gray-400" />
         <h2 className="mb-4">{orderId ? 'Order Not Found' : 'No Orders Yet'}</h2>
         <p className="text-gray-600 mb-6">
-          {orderId 
+          {orderId
             ? "We couldn't find order " + orderId
             : "You haven't placed any orders yet"}
         </p>

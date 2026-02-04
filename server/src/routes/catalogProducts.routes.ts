@@ -17,7 +17,11 @@ router.get('/', async (req, res) => {
 // Get single catalog product by ID
 router.get('/:id', async (req, res) => {
   try {
-    const product = await catalogProductsService.getProductById(Number(req.params.id));
+    const id = Number(req.params.id);
+    if (Number.isNaN(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid product ID' });
+    }
+    const product = await catalogProductsService.getProductById(id);
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }

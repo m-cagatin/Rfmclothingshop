@@ -5,6 +5,7 @@ import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { ProductCard } from '../components/ProductCard';
 import { useNavigate } from 'react-router-dom';
 import { FavoriteItem } from '../components/FavoritesDrawer';
+import { useCatalogProductsCustomer } from '../hooks/useCatalogProductsCustomer';
 
 interface HomePageProps {
   onAddToCart: (productId: string) => void;
@@ -14,42 +15,10 @@ interface HomePageProps {
 
 export function HomePage({ onAddToCart, onToggleFavorite, favorites = [] }: HomePageProps) {
   const navigate = useNavigate();
+  const { products: catalogProducts, loading: productsLoading } = useCatalogProductsCustomer();
 
-  // Mock product data - featured products only
-  const featuredProducts = [
-    {
-      id: '1',
-      name: 'Classic White T-Shirt - Round Neck',
-      price: 200,
-      image: 'https://images.unsplash.com/photo-1636458939465-9209848a5688?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwbW9kZWwlMjB0c2hpcnR8ZW58MXx8fHwxNzYyOTI0MDc1fDA&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'T-Shirts',
-      isNew: true,
-    },
-    {
-      id: '2',
-      name: 'Varsity Jacket - Blue & White',
-      price: 600,
-      image: 'https://images.unsplash.com/photo-1761245332312-fddc4f0b5bab?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx2YXJzaXR5JTIwamFja2V0JTIwc3RyZWV0fGVufDF8fHx8MTc2Mjk3Nzk3OXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: true,
-    },
-    {
-      id: '3',
-      name: 'Oversized Hoodie - Premium Cotton',
-      price: 450,
-      image: 'https://images.unsplash.com/photo-1688111421205-a0a85415b224?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwaG9vZGllfGVufDF8fHx8MTc2Mjk1MjY5MHww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Hoodies',
-      isNew: false,
-    },
-    {
-      id: '4',
-      name: 'Denim Jacket - Classic Blue',
-      price: 550,
-      image: 'https://images.unsplash.com/photo-1657349038547-b18a07fb4329?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkZW5pbSUyMGphY2tldCUyMHN0eWxlfGVufDF8fHx8MTc2MjkzMjg2MXww&ixlib=rb-4.1.0&q=80&w=1080',
-      category: 'Jackets',
-      isNew: false,
-    },
-  ];
+  // Use real catalog products as featured (first 4) so product links work
+  const featuredProducts = catalogProducts.slice(0, 4);
 
   return (
     <div>
@@ -102,15 +71,28 @@ export function HomePage({ onAddToCart, onToggleFavorite, favorites = [] }: Home
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {featuredProducts.map((product) => (
-            <ProductCard
-              key={product.id}
-              {...product}
-              onAddToCart={onAddToCart}
-              onToggleFavorite={onToggleFavorite}
-              isFavorited={favorites.some(fav => fav.id === product.id)}
-            />
-          ))}
+          {productsLoading ? (
+            <p className="col-span-full text-center text-gray-500 py-8">Loading featured products...</p>
+          ) : featuredProducts.length === 0 ? (
+            <p className="col-span-full text-center text-gray-500 py-8">
+              No catalog products yet. Add products in the admin to see them here.
+            </p>
+          ) : (
+            featuredProducts.map((product) => (
+              <ProductCard
+                key={product.id}
+                id={product.id}
+                name={product.name}
+                price={product.price}
+                image={product.image}
+                category={product.category}
+                isNew={product.isNew}
+                onAddToCart={onAddToCart}
+                onToggleFavorite={onToggleFavorite}
+                isFavorited={favorites.some(fav => fav.id === product.id)}
+              />
+            ))
+          )}
         </div>
       </section>
 
