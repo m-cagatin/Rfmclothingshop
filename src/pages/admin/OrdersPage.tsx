@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { OrderDetailsModal } from '../../components/admin/OrderDetailsModal';
 import { 
   ChevronLeft, 
   ChevronRight,
@@ -54,6 +55,7 @@ interface Order {
     quantity: number;
     unitPrice: number;
     subtotal: number;
+    image?: string | null;
   }>;
   total: number;
   balanceRemaining: number;
@@ -71,8 +73,14 @@ interface Order {
     id: number;
     method: string;
     status: string;
+    type?: string;
     amountPaid: number;
+    amount?: number;
+    remainingBalance?: number;
     referenceNumber: string | null;
+    createdAt?: string | null;
+    verifiedAt?: string | null;
+    paidAt?: string | null;
   } | null;
 }
 
@@ -115,12 +123,14 @@ function DroppableColumn({ id, children }: DroppableColumnProps) {
   );
 }
 
+
 interface SortableOrderCardProps {
   order: Order;
   onSetShipping?: (orderId: string) => void;
+  onOrderClick?: (orderId: string) => void;
 }
 
-function SortableOrderCard({ order, onSetShipping }: SortableOrderCardProps) {
+function SortableOrderCard({ order, onSetShipping, onOrderClick }: SortableOrderCardProps) {
   const navigate = useNavigate();
   if (!order || !order.id) {
     return null;
@@ -158,12 +168,25 @@ function SortableOrderCard({ order, onSetShipping }: SortableOrderCardProps) {
     },
   } : undefined;
 
+  const handleOrderIdClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onOrderClick) {
+      onOrderClick(order.id);
+    }
+  };
+
   return (
     <div ref={setNodeRef} style={style}>
       <Card className="border shadow-sm hover:shadow-md transition-shadow cursor-move" {...attributes} {...(filteredListeners || listeners)}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <span className="font-bold">{order.id || 'N/A'}</span>
+            <button
+              onClick={handleOrderIdClick}
+              className="font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition-colors"
+              title="Click to view order details"
+            >
+              {order.id || 'N/A'}
+            </button>
           </div>
           <p className="text-sm font-medium mt-2">{order.customer?.name || 'Unknown'}</p>
         </CardHeader>
@@ -212,6 +235,7 @@ export function OrdersPage() {
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [isClearing, setIsClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(true);
@@ -532,6 +556,7 @@ export function OrdersPage() {
                                 key={order.id} 
                                 order={order}
                                 onSetShipping={activeBoard === 'shipping' && column.id === 'done' ? () => navigate(`/shipping-details/${order.id}`) : undefined}
+                                onOrderClick={setSelectedOrderId}
                               />
                             ))
                           ) : (
@@ -596,6 +621,14 @@ export function OrdersPage() {
               })() : null}
             </DragOverlay>
           </DndContext>
+        )}
+
+        {/* Order Details Modal */}
+        {selectedOrderId && (
+          <OrderDetailsModal
+            orderId={selectedOrderId}
+            onClose={() => setSelectedOrderId(null)}
+          />
         )}
       </div>
     </AdminLayout>

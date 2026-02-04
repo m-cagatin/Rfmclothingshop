@@ -298,6 +298,7 @@ export function CheckoutPage({ cartItems, onClearCart }: CheckoutPageProps) {
               quantity: item.quantity,
               unitPrice: item.price,
               subtotal: item.price * item.quantity,
+              image: item.image, // Include image URL
             }))}
             total={total}
             onPaymentSubmitted={(orderId) => {

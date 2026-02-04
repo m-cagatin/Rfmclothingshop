@@ -40,6 +40,7 @@ export function CustomizableProductsPage() {
     archiveProduct,
     restoreProduct,
     getProductsByStatus,
+    clearAllProducts,
   } = useCustomizableProducts();
 
   const [activeTab, setActiveTab] = useState<ProductStatus>('active');
@@ -49,6 +50,7 @@ export function CustomizableProductsPage() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [archiveConfirm, setArchiveConfirm] = useState<string | null>(null);
+  const [clearAllConfirm, setClearAllConfirm] = useState(false);
   
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -147,6 +149,18 @@ export function CustomizableProductsPage() {
     deleteProduct(productId);
     setDeleteConfirm(null);
     toast.success('Product permanently deleted');
+  };
+
+  const handleClearAll = async () => {
+    try {
+      await clearAllProducts();
+      setClearAllConfirm(false);
+      setSelectedProducts([]);
+      toast.success('All products cleared successfully');
+    } catch (error) {
+      console.error('Error clearing all products:', error);
+      toast.error('Failed to clear all products');
+    }
   };
 
   if (loading) {
@@ -337,6 +351,18 @@ export function CustomizableProductsPage() {
             <Plus className="size-4 mr-2" />
             Add New Product
           </Button>
+
+          {/* Clear All Button */}
+          {products.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={() => setClearAllConfirm(true)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Trash2 className="size-4 mr-2" />
+              Clear All
+            </Button>
+          )}
         </div>
 
         {/* Active Filter Badges */}
@@ -606,6 +632,28 @@ export function CustomizableProductsPage() {
               className="bg-red-600 hover:bg-red-700"
             >
               Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear All Confirmation Dialog */}
+      <AlertDialog open={clearAllConfirm} onOpenChange={setClearAllConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Products?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete ALL {products.length} products and their images from the database. 
+              This action cannot be undone. Are you absolutely sure?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAll}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Clear All Products
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

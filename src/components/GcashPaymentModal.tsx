@@ -24,6 +24,7 @@ interface GcashPaymentModalProps {
     productName: string;
     quantity: number;
     unitPrice: number;
+    image?: string;
   }>;
   total?: number;
   onPaymentSubmitted?: (orderId: string) => void;

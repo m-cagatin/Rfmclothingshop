@@ -64,7 +64,20 @@ export async function getAllOrders(filters?: {
     const orders = await prisma.orders.findMany({
       where,
       include: {
-        order_items: true,
+        order_items: {
+          include: {
+            catalog_clothing: {
+              include: {
+                product_images: {
+                  orderBy: {
+                    display_order: 'asc',
+                  },
+                  take: 1, // Get first image
+                },
+              },
+            },
+          },
+        },
         tracking_events: {
           orderBy: {
             timestamp: 'desc',
@@ -91,14 +104,34 @@ export async function getAllOrders(filters?: {
       phone: order.customer_phone || '',
       address: order.customer_address || '',
     },
-    items: order.order_items.map((item) => ({
-      id: item.item_id.toString(),
-      productId: item.product_id,
-      name: item.product_name,
-      quantity: item.quantity,
-      unitPrice: Number(item.unit_price),
-      subtotal: Number(item.subtotal),
-    })),
+    items: order.order_items.map((item) => {
+      // Try to get image from multiple sources:
+      // 1. First check if image_url is stored in order_items (new field)
+      // 2. Then check product_images relation
+      let imageUrl = null;
+      try {
+        // Check if image_url is stored directly in order_items
+        if ((item as any).image_url) {
+          imageUrl = (item as any).image_url;
+        } 
+        // Fallback to product_images relation
+        else if (item.catalog_clothing?.product_images && item.catalog_clothing.product_images.length > 0) {
+          imageUrl = item.catalog_clothing.product_images[0].image_url;
+        }
+      } catch (error) {
+        console.error(`❌ Failed to get image for product ${item.product_id}:`, error);
+      }
+      
+      return {
+        id: item.item_id.toString(),
+        productId: item.product_id,
+        name: item.product_name,
+        quantity: item.quantity,
+        unitPrice: Number(item.unit_price),
+        subtotal: Number(item.subtotal),
+        image: imageUrl,
+      };
+    }),
     total: Number(order.total_amount),
     balanceRemaining: Number(order.balance_remaining || 0),
     status: order.status || 'payment_pending',
@@ -109,8 +142,14 @@ export async function getAllOrders(filters?: {
       id: order.payments_payments_order_idToorders[0].payment_id,
       method: order.payments_payments_order_idToorders[0].payment_method,
       status: order.payments_payments_order_idToorders[0].payment_status,
+      type: order.payments_payments_order_idToorders[0].payment_type,
       amountPaid: Number(order.payments_payments_order_idToorders[0].amount_paid || order.payments_payments_order_idToorders[0].amount),
+      amount: Number(order.payments_payments_order_idToorders[0].amount),
+      remainingBalance: Number(order.payments_payments_order_idToorders[0].remaining_balance || 0),
       referenceNumber: order.payments_payments_order_idToorders[0].reference_number,
+      createdAt: order.payments_payments_order_idToorders[0].created_at,
+      verifiedAt: order.payments_payments_order_idToorders[0].verified_at,
+      paidAt: order.payments_payments_order_idToorders[0].paid_at,
     } : null,
     trackingEvents: order.tracking_events.map((event) => ({
       id: event.id,
@@ -141,7 +180,20 @@ export async function getOrderByRef(orderRef: string) {
   const order = await prisma.orders.findUnique({
     where: { order_ref: orderRef },
     include: {
-      order_items: true,
+      order_items: {
+        include: {
+          catalog_clothing: {
+            include: {
+              product_images: {
+                orderBy: {
+                  display_order: 'asc',
+                },
+                take: 1, // Get first image
+              },
+            },
+          },
+        },
+      },
       tracking_events: {
         orderBy: {
           timestamp: 'desc',
@@ -173,14 +225,34 @@ export async function getOrderByRef(orderRef: string) {
       phone: order.customer_phone || '',
       address: order.customer_address || '',
     },
-    items: order.order_items.map((item) => ({
-      id: item.item_id.toString(),
-      productId: item.product_id,
-      name: item.product_name,
-      quantity: item.quantity,
-      unitPrice: Number(item.unit_price),
-      subtotal: Number(item.subtotal),
-    })),
+    items: order.order_items.map((item) => {
+      // Try to get image from multiple sources:
+      // 1. First check if image_url is stored in order_items (new field)
+      // 2. Then check product_images relation
+      let imageUrl = null;
+      try {
+        // Check if image_url is stored directly in order_items
+        if ((item as any).image_url) {
+          imageUrl = (item as any).image_url;
+        } 
+        // Fallback to product_images relation
+        else if (item.catalog_clothing?.product_images && item.catalog_clothing.product_images.length > 0) {
+          imageUrl = item.catalog_clothing.product_images[0].image_url;
+        }
+      } catch (error) {
+        console.error(`❌ Failed to get image for product ${item.product_id}:`, error);
+      }
+      
+      return {
+        id: item.item_id.toString(),
+        productId: item.product_id,
+        name: item.product_name,
+        quantity: item.quantity,
+        unitPrice: Number(item.unit_price),
+        subtotal: Number(item.subtotal),
+        image: imageUrl,
+      };
+    }),
     total: Number(order.total_amount),
     balanceRemaining: Number(order.balance_remaining || 0),
     status: order.status || 'payment_pending',
@@ -204,8 +276,14 @@ export async function getOrderByRef(orderRef: string) {
       id: latestPayment.payment_id,
       method: latestPayment.payment_method,
       status: latestPayment.payment_status,
+      type: latestPayment.payment_type,
       amountPaid: Number(latestPayment.amount_paid || latestPayment.amount),
+      amount: Number(latestPayment.amount),
+      remainingBalance: Number(latestPayment.remaining_balance || 0),
       referenceNumber: latestPayment.reference_number,
+      createdAt: latestPayment.created_at,
+      verifiedAt: latestPayment.verified_at,
+      paidAt: latestPayment.paid_at,
     } : null,
   };
 }
