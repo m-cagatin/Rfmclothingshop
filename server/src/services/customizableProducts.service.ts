@@ -355,6 +355,50 @@ export async function updateProductStatus(
 }
 
 /**
+ * Clear all products and their images
+ */
+export async function clearAllProducts() {
+  // Get all products with images before deleting
+  const products = await prisma.customizable_products.findMany({
+    include: { customizable_product_images: true }
+  });
+
+  // Collect all Cloudinary public IDs to delete
+  const publicIds: string[] = [];
+  
+  for (const product of products) {
+    // Add product images
+    const imagePublicIds = product.customizable_product_images
+      .filter(img => img.cloudinary_public_id)
+      .map(img => img.cloudinary_public_id!);
+    publicIds.push(...imagePublicIds);
+    
+    // Add variant image if exists
+    if (product.variant_image_public_id) {
+      publicIds.push(product.variant_image_public_id);
+    }
+  }
+  
+  // Delete all images from Cloudinary
+  if (publicIds.length > 0) {
+    try {
+      await cloudinaryService.deleteMultipleImages(publicIds);
+    } catch (error) {
+      console.error('Failed to delete images from Cloudinary:', error);
+      // Continue anyway - database cleanup is more important
+    }
+  }
+
+  // Delete all product images (will cascade from products, but being explicit)
+  await prisma.customizable_product_images.deleteMany({});
+  
+  // Delete all products
+  const deletedCount = await prisma.customizable_products.deleteMany({});
+  
+  return { deletedCount: deletedCount.count };
+}
+
+/**
  * Generate unique product code
  */
 async function generateProductCode(): Promise<string> {

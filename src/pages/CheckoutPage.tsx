@@ -298,6 +298,7 @@ export function CheckoutPage({ cartItems, onClearCart }: CheckoutPageProps) {
               quantity: item.quantity,
               unitPrice: item.price,
               subtotal: item.price * item.quantity,
+              image: item.image,
               size: item.size,
               color: item.color,
               customizationData: item.customizationData,

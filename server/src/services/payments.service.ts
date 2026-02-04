@@ -24,6 +24,7 @@ interface SubmitPaymentInput {
     subtotal: number;
     size?: string;
     color?: string;
+    image?: string;
     customizationData?: {
       productId: number;
       frontDesignUrl?: string;
@@ -204,12 +205,39 @@ export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentRe
           }
         }
         
+        // Try to get image from orderItems, or fetch from product_images
+        let imageUrl = item.image || null;
+        
+        // If no image provided, try to get from product_images
+        if (!imageUrl) {
+          try {
+            const product = await prisma.catalog_clothing.findUnique({
+              where: { product_id: productId },
+              include: {
+                product_images: {
+                  orderBy: {
+                    display_order: 'asc',
+                  },
+                  take: 1,
+                },
+              },
+            });
+            
+            if (product?.product_images && product.product_images.length > 0) {
+              imageUrl = product.product_images[0].image_url;
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch image for product ${productId}:`, error);
+          }
+        }
+        
         return {
           product_id: productId,
           product_name: item.productName,
           quantity: item.quantity,
           unit_price: item.unitPrice,
           subtotal: item.subtotal,
+          image_url: imageUrl,
           size: item.size || null,
           color: item.color || null,
           customization_data: item.customizationData ? item.customizationData : undefined,

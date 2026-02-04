@@ -373,6 +373,28 @@ export function useCustomizableProducts() {
     return products.filter((p) => p.status === status);
   };
 
+  const clearAllProducts = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/customizable-products`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to clear all products');
+      const result = await response.json();
+      setProducts([]);
+      // Clear localStorage as well
+      localStorage.removeItem(STORAGE_KEY);
+      // Refresh products list (will be empty, but ensures sync)
+      await fetchProducts();
+      return result;
+    } catch (err) {
+      console.error('Error clearing all products:', err);
+      // Fallback to localStorage
+      setProducts([]);
+      localStorage.removeItem(STORAGE_KEY);
+      throw err;
+    }
+  };
+
   return {
     products,
     loading,
@@ -386,5 +408,6 @@ export function useCustomizableProducts() {
     archiveProduct,
     restoreProduct,
     getProductsByStatus,
+    clearAllProducts,
   };
 }
