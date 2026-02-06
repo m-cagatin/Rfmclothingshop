@@ -32,8 +32,6 @@ model User {
   googleId            String?               @unique
   profilePicture      String?
   RefreshToken        RefreshToken[]
-  user_current_design user_current_design[]
-  user_saved_designs  user_saved_designs[]
   UserCart            UserCart[]
   UserFavorite        UserFavorite[]
 }
@@ -74,9 +72,9 @@ model cart_items {
   color              String?           @db.VarChar(50)
   unit_price         Decimal           @db.Decimal(10, 2)
   customization_data Json?
-  custom_design_id   Int?
   created_at         DateTime?         @default(now()) @db.Timestamp(0)
   updated_at         DateTime?         @default(now()) @db.Timestamp(0)
+  custom_design_id   Int?
   customer_accounts  customer_accounts @relation(fields: [customer_id], references: [CustomerId], onDelete: Cascade, onUpdate: NoAction, map: "cart_items_ibfk_1")
   catalog_clothing   catalog_clothing  @relation(fields: [product_id], references: [product_id], onDelete: NoAction, onUpdate: NoAction, map: "cart_items_ibfk_2")
 
@@ -203,61 +201,11 @@ model customizable_products {
   status                      customizable_products_status?               @default(active)
   customizable_product_images customizable_product_images[]
   customizable_product_stock  customizable_product_stock[]
-  user_current_design         user_current_design[]
-  user_saved_designs          user_saved_designs[]
 
   @@index([category], map: "idx_category")
   @@index([color_name], map: "idx_color_name")
   @@index([gender], map: "idx_gender")
   @@index([variant_name], map: "idx_variant_name")
-}
-
-model user_current_design {
-  id                       Int                   @id @default(autoincrement())
-  user_id                  String
-  customizable_product_id  Int
-  selected_size            String                @db.VarChar(50)
-  selected_print_option    String                @default("none") @db.VarChar(20)
-  print_area_preset        String                @default("Letter") @db.VarChar(50)
-  front_canvas_json        String?               @db.Text
-  back_canvas_json         String?               @db.Text
-  front_thumbnail_url      String?               @db.VarChar(500)
-  back_thumbnail_url       String?               @db.VarChar(500)
-  last_saved_at            DateTime              @default(now())
-  created_at               DateTime              @default(now())
-  updated_at               DateTime              @default(now())
-  customizable_products    customizable_products @relation(fields: [customizable_product_id], references: [id], onDelete: Cascade)
-  user                     User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@unique([user_id, customizable_product_id], map: "unique_user_product")
-  @@index([user_id], map: "idx_user_id")
-  @@index([customizable_product_id], map: "idx_product_id")
-  @@index([last_saved_at], map: "idx_last_saved")
-}
-
-model user_saved_designs {
-  id                       Int                   @id @default(autoincrement())
-  user_id                  String
-  customizable_product_id  Int
-  design_name              String                @db.VarChar(255)
-  selected_size            String                @db.VarChar(50)
-  selected_print_option    String                @default("none") @db.VarChar(20)
-  print_area_preset        String                @default("Letter") @db.VarChar(50)
-  front_canvas_json        String?               @db.Text
-  back_canvas_json         String?               @db.Text
-  front_thumbnail_url      String?               @db.VarChar(500)
-  back_thumbnail_url       String?               @db.VarChar(500)
-  is_template              Boolean               @default(false)
-  tags                     Json?
-  created_at               DateTime              @default(now())
-  updated_at               DateTime              @default(now())
-  customizable_products    customizable_products @relation(fields: [customizable_product_id], references: [id], onDelete: Cascade)
-  user                     User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@index([user_id], map: "idx_user_saved_designs_user_id")
-  @@index([customizable_product_id], map: "idx_user_saved_designs_product_id")
-  @@index([created_at], map: "idx_user_saved_designs_created_at")
-  @@index([is_template], map: "idx_user_saved_designs_is_template")
 }
 
 model expenses {
@@ -272,22 +220,36 @@ model expenses {
 }
 
 model order_items {
-  item_id            Int              @id @default(autoincrement())
-  order_id           Int
-  product_id         Int
-  product_name       String           @db.VarChar(255)
-  quantity           Int
-  size               String?          @db.VarChar(20)
-  color              String?          @db.VarChar(50)
-  unit_price         Decimal          @db.Decimal(10, 2)
-  subtotal           Decimal          @db.Decimal(10, 2)
-  customization_data Json?
-  created_at         DateTime?        @default(now()) @db.Timestamp(0)
-  orders             orders           @relation(fields: [order_id], references: [order_id], onDelete: Cascade, onUpdate: NoAction, map: "order_items_ibfk_1")
-  catalog_clothing   catalog_clothing @relation(fields: [product_id], references: [product_id], onDelete: NoAction, onUpdate: NoAction, map: "order_items_ibfk_2")
+  item_id             Int              @id @default(autoincrement())
+  order_id            Int
+  product_id          Int
+  product_name        String           @db.VarChar(255)
+  quantity            Int
+  size                String?          @db.VarChar(20)
+  color               String?          @db.VarChar(50)
+  unit_price          Decimal          @db.Decimal(10, 2)
+  subtotal            Decimal          @db.Decimal(10, 2)
+  image_url           String?          @db.VarChar(500)
+  customization_data  Json?
+  created_at          DateTime?        @default(now()) @db.Timestamp(0)
+  back_canvas_json    String?          @db.Text
+  back_mockup_url     String?          @db.VarChar(500)
+  back_thumbnail_url  String?          @db.VarChar(500)
+  front_canvas_json   String?          @db.Text
+  front_mockup_url    String?          @db.VarChar(500)
+  front_thumbnail_url String?          @db.VarChar(500)
+  material            String?          @db.VarChar(100)
+  print_cost          Decimal?         @db.Decimal(10, 2)
+  print_method        String?          @db.VarChar(50)
+  print_option        String?          @db.VarChar(20)
+  product_code        String?          @db.VarChar(50)
+  variant_name        String?          @db.VarChar(255)
+  orders              orders           @relation(fields: [order_id], references: [order_id], onDelete: Cascade, onUpdate: NoAction, map: "order_items_ibfk_1")
+  catalog_clothing    catalog_clothing @relation(fields: [product_id], references: [product_id], onDelete: NoAction, onUpdate: NoAction, map: "order_items_ibfk_2")
 
   @@index([order_id], map: "order_id")
   @@index([product_id], map: "product_id")
+  @@index([print_option], map: "idx_order_items_print_option")
 }
 
 model orders {
@@ -299,7 +261,6 @@ model orders {
   customer_phone                       String?           @db.VarChar(20)
   customer_address                     String?           @db.Text
   total_amount                         Decimal           @db.Decimal(10, 2)
-  balance_remaining                    Decimal?          @db.Decimal(10, 2)
   payment_id                           Int?
   status                               orders_status?    @default(payment_pending)
   order_date                           DateTime?         @default(now()) @db.Timestamp(0)
@@ -307,11 +268,12 @@ model orders {
   notes                                String?           @db.Text
   created_at                           DateTime?         @default(now()) @db.Timestamp(0)
   updated_at                           DateTime?         @default(now()) @db.Timestamp(0)
+  balance_remaining                    Decimal?          @db.Decimal(10, 2)
   order_items                          order_items[]
-  tracking_events                      tracking_events[]
   customer_accounts                    customer_accounts @relation(fields: [customer_id], references: [CustomerId], onDelete: NoAction, onUpdate: NoAction, map: "orders_ibfk_1")
   payments_orders_payment_idTopayments payments?         @relation("orders_payment_idTopayments", fields: [payment_id], references: [payment_id], onDelete: NoAction, onUpdate: NoAction, map: "orders_ibfk_2")
   payments_payments_order_idToorders   payments[]        @relation("payments_order_idToorders")
+  tracking_events                      tracking_events[]
 
   @@index([customer_id], map: "idx_customer_id")
   @@index([order_date], map: "idx_order_date")
@@ -323,11 +285,8 @@ model payments {
   payment_id                         Int                      @id @default(autoincrement())
   order_id                           Int
   payment_method                     payments_payment_method
-  payment_type                       payments_payment_type?   @default(full)
   payment_status                     payments_payment_status? @default(pending)
   amount                             Decimal                  @db.Decimal(10, 2)
-  amount_paid                        Decimal?                 @db.Decimal(10, 2)
-  remaining_balance                  Decimal?                 @db.Decimal(10, 2)
   payment_proof_url                  String?                  @db.VarChar(500)
   cloudinary_public_id               String?                  @db.VarChar(255)
   reference_number                   String?                  @db.VarChar(100)
@@ -336,6 +295,9 @@ model payments {
   paid_at                            DateTime?                @db.Timestamp(0)
   created_at                         DateTime?                @default(now()) @db.Timestamp(0)
   updated_at                         DateTime?                @default(now()) @db.Timestamp(0)
+  amount_paid                        Decimal?                 @db.Decimal(10, 2)
+  payment_type                       payments_payment_type?   @default(full)
+  remaining_balance                  Decimal?                 @db.Decimal(10, 2)
   orders_orders_payment_idTopayments orders[]                 @relation("orders_payment_idTopayments")
   orders_payments_order_idToorders   orders                   @relation("payments_order_idToorders", fields: [order_id], references: [order_id], onDelete: Cascade, onUpdate: NoAction, map: "payments_ibfk_1")
   Users                              Users?                   @relation(fields: [verified_by], references: [UserId], onDelete: NoAction, onUpdate: NoAction, map: "payments_ibfk_2")
@@ -359,6 +321,103 @@ model product_images {
   @@unique([product_id, display_order], map: "unique_product_display")
   @@index([display_order], map: "idx_display_order")
   @@index([product_id], map: "idx_product_id")
+}
+
+model canvas_graphics {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @db.VarChar(255)
+  cloudinary_url       String   @db.Text
+  thumbnail_url        String   @db.Text
+  cloudinary_public_id String   @db.VarChar(255)
+  file_size            Int
+  width                Int
+  height               Int
+  format               String   @db.VarChar(10)
+  category             String?  @db.VarChar(50)
+  tags                 Json?
+  created_at           DateTime @default(now()) @db.Timestamp(0)
+  updated_at           DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([created_at], map: "idx_graphics_created")
+  @@index([category], map: "idx_graphics_category")
+}
+
+model canvas_patterns {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @db.VarChar(255)
+  cloudinary_url       String   @db.Text
+  thumbnail_url        String   @db.Text
+  cloudinary_public_id String   @db.VarChar(255)
+  file_size            Int
+  width                Int
+  height               Int
+  format               String   @db.VarChar(10)
+  is_seamless          Boolean  @default(true)
+  tags                 Json?
+  created_at           DateTime @default(now()) @db.Timestamp(0)
+  updated_at           DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([created_at], map: "idx_patterns_created")
+}
+
+model UserCart {
+  id                  String   @id @default(uuid())
+  userId              String
+  productId           String   @db.VarChar(255)
+  productName         String   @db.VarChar(255)
+  price               Decimal  @db.Decimal(10, 2)
+  image               String?  @db.VarChar(500)
+  category            String?  @db.VarChar(100)
+  quantity            Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  color               String?  @db.VarChar(50)
+  customDesignId      Int?
+  customizationData   Json?
+  size                String?  @db.VarChar(20)
+  back_canvas_json    String?  @db.Text
+  back_mockup_url     String?  @db.VarChar(500)
+  back_thumbnail_url  String?  @db.VarChar(500)
+  front_canvas_json   String?  @db.Text
+  front_mockup_url    String?  @db.VarChar(500)
+  front_thumbnail_url String?  @db.VarChar(500)
+  material            String?  @db.VarChar(100)
+  print_method        String?  @db.VarChar(50)
+  print_option        String?  @db.VarChar(20)
+  product_code        String?  @db.VarChar(50)
+  variant_name        String?  @db.VarChar(255)
+  User                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model tracking_events {
+  id         Int      @id @default(autoincrement())
+  order_id   Int
+  status     String   @db.VarChar(100)
+  message    String   @db.Text
+  location   String?  @db.VarChar(255)
+  timestamp  DateTime @default(now()) @db.Timestamp(0)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  orders     orders   @relation(fields: [order_id], references: [order_id], onDelete: Cascade, map: "tracking_events_ibfk_1")
+
+  @@index([order_id], map: "idx_order_id")
+  @@index([timestamp], map: "idx_timestamp")
+}
+
+model UserFavorite {
+  id          String   @id @default(uuid())
+  userId      String
+  productId   String   @db.VarChar(255)
+  productName String   @db.VarChar(255)
+  price       Decimal  @db.Decimal(10, 2)
+  image       String?  @db.VarChar(500)
+  category    String?  @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
 }
 
 enum payments_payment_method {
@@ -460,90 +519,3 @@ enum customizable_products_status {
   inactive
   archived
 }
-
-model canvas_graphics {
-  id                   Int      @id @default(autoincrement())
-  name                 String   @db.VarChar(255)
-  cloudinary_url       String   @db.Text
-  thumbnail_url        String   @db.Text
-  cloudinary_public_id String   @db.VarChar(255)
-  file_size            Int
-  width                Int
-  height               Int
-  format               String   @db.VarChar(10)
-  category             String?  @db.VarChar(50)
-  tags                 Json?
-  created_at           DateTime @default(now()) @db.Timestamp(0)
-  updated_at           DateTime @default(now()) @db.Timestamp(0)
-
-  @@index([created_at], map: "idx_graphics_created")
-  @@index([category], map: "idx_graphics_category")
-}
-
-model canvas_patterns {
-  id                   Int      @id @default(autoincrement())
-  name                 String   @db.VarChar(255)
-  cloudinary_url       String   @db.Text
-  thumbnail_url        String   @db.Text
-  cloudinary_public_id String   @db.VarChar(255)
-  file_size            Int
-  width                Int
-  height               Int
-  format               String   @db.VarChar(10)
-  is_seamless          Boolean  @default(true)
-  tags                 Json?
-  created_at           DateTime @default(now()) @db.Timestamp(0)
-  updated_at           DateTime @default(now()) @db.Timestamp(0)
-
-  @@index([created_at], map: "idx_patterns_created")
-}
-
-model UserCart {
-  id                String   @id @default(uuid())
-  userId            String
-  productId         String   @db.VarChar(255)
-  productName       String   @db.VarChar(255)
-  price             Decimal  @db.Decimal(10, 2)
-  image             String?  @db.VarChar(500)
-  category          String?  @db.VarChar(100)
-  quantity          Int      @default(1)
-  size              String?  @db.VarChar(20)
-  color             String?  @db.VarChar(50)
-  customizationData Json?
-  customDesignId    Int?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  User              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-model tracking_events {
-  id        Int       @id @default(autoincrement())
-  order_id  Int
-  status    String    @db.VarChar(100)
-  message   String    @db.Text
-  location  String?   @db.VarChar(255)
-  timestamp DateTime  @default(now()) @db.Timestamp(0)
-  created_at DateTime @default(now()) @db.Timestamp(0)
-  orders    orders    @relation(fields: [order_id], references: [order_id], onDelete: Cascade, map: "tracking_events_ibfk_1")
-
-  @@index([order_id], map: "idx_order_id")
-  @@index([timestamp], map: "idx_timestamp")
-}
-
-model UserFavorite {
-  id          String   @id @default(uuid())
-  userId      String
-  productId   String   @db.VarChar(255)
-  productName String   @db.VarChar(255)
-  price       Decimal  @db.Decimal(10, 2)
-  image       String?  @db.VarChar(500)
-  category    String?  @db.VarChar(100)
-  createdAt   DateTime @default(now())
-  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, productId])
-  @@index([userId])
-}
-
