@@ -9,7 +9,7 @@ import { Label } from '../components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { 
+import {
   ArrowLeft,
   ArrowRight,
   Info,
@@ -47,7 +47,9 @@ import {
   Unlock,
   Eye,
   ShoppingCart,
-  Loader2
+  Loader2,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import whiteTshirtFront from '../assets/787e6b4140e96e95ccf202de719b1da6a8bed3e6.png';
 import whiteTshirtBack from '../assets/7b9c6122bea5ee4b12601772b07cf4c23c8f6092.png';
@@ -60,7 +62,7 @@ import { useCustomizableProducts } from '../hooks/useCustomizableProducts';
 import { useCart } from '../hooks/useCart';
 import { PropertiesPanel } from '../components/customizer/PropertiesPanel';
 import { DesignCard } from '../components/customizer/DesignCard';
-import { AlertCircle } from 'lucide-react';
+import { PreviewModal } from '../components/PreviewModal';
 import { PRINT_AREA_PRESETS, PrintAreaPreset, DEFAULT_ZOOM } from '../utils/fabricHelpers';
 import { exportCanvasToDataURL, getPrintAreaBounds } from '../utils/canvasExport';
 import { validateDesign, autoFitObjectsToPrintArea, DESIGN_LIMITS } from '../utils/designValidation';
@@ -90,6 +92,14 @@ interface ClothingProduct {
   retailPrice?: number;
   frontPrintCost?: number;
   backPrintCost?: number;
+  // CRITICAL: Images array from database
+  images?: Array<{
+    id?: number;
+    url: string;
+    publicId: string;
+    type: 'front' | 'back' | 'additional';
+    displayOrder: number;
+  }>;
 }
 
 interface LayerItem {
@@ -151,15 +161,8 @@ export function CustomDesignPage() {
   const location = useLocation();
   const { user, isHydrating } = useAuth();
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
-  
-  // Show warning if not logged in (but don't redirect - let them use the editor)
-  useEffect(() => {
-    if (!isHydrating && !user) {
-      toast.info('Log in to save your designs automatically', { duration: 5000 });
-    }
-  }, [user, isHydrating]);
-  
-  // Canvas zoom/pan hook (Phase 2)
+
+  // Canvas zoom/pan hook (Phase 2) - MUST be called before any returns
   const {
     canvasScale,
     panOffset,
@@ -189,17 +192,14 @@ export function CustomDesignPage() {
   const [activeTab, setActiveTab] = useState('edit');
   const [activeTool, setActiveTool] = useState<string | null>(null);
   
-  // Loading flag to prevent auto-save during design load
-  const isLoadingDesignRef = useRef(false);
-  
   const [isClothingPanelOpen, setIsClothingPanelOpen] = useState(false);
   const [isVariantDetailsPanelOpen, setIsVariantDetailsPanelOpen] = useState(false);
   const [isUploadPanelOpen, setIsUploadPanelOpen] = useState(false);
   const [isTextPanelOpen, setIsTextPanelOpen] = useState(false);
-  const [isLibraryPanelOpen, setIsLibraryPanelOpen] = useState(false);
   const [isGraphicsPanelOpen, setIsGraphicsPanelOpen] = useState(false);
   const [isPatternsPanelOpen, setIsPatternsPanelOpen] = useState(false);
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [expandedLayerIds, setExpandedLayerIds] = useState<Set<any>>(new Set());
   const [expandedPricingIds, setExpandedPricingIds] = useState<Set<string>>(new Set());
   
@@ -218,6 +218,14 @@ export function CustomDesignPage() {
     image: string;
     retailPrice: number;
     totalPrice: number;
+    category?: string;
+    images?: Array<{
+      id?: number;
+      url: string;
+      publicId: string;
+      type: 'front' | 'back' | 'additional';
+      displayOrder: number;
+    }>;
   } | null>(null);
 
   // Track size and print selections for current product
@@ -228,14 +236,9 @@ export function CustomDesignPage() {
   const [historyStack, setHistoryStack] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyTimeoutRef = useRef<number | null>(null);
-  
-  // Unified design status for both save and load
-  const [designStatus, setDesignStatus] = useState<{
-    type: 'idle' | 'loading' | 'loaded' | 'saving' | 'saved' | 'save-error' | 'load-error';
-    message?: string;
-  }>({ type: 'idle' });
-  
-  const saveTimeoutRef = useRef<number | null>(null);
+  const hasLoadedDesignRef = useRef(false);
+  const isRestoringCanvasRef = useRef(false);
+  const [pendingDesignData, setPendingDesignData] = useState<{ frontCanvasJson: string | null; backCanvasJson: string | null } | null>(null);
   
   // Grid and snap settings (grid size is in pixels at 300 DPI: 1" = 300px)
   const [showGrid, setShowGrid] = useState(false);
@@ -251,7 +254,12 @@ export function CustomDesignPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploadImage, validateImage, isUploading, error: uploadError } = useImageUpload();
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
-  
+
+  // Auto-save state
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
   // Text tool state
   const [textContent, setTextContent] = useState('');
   const [selectedFont, setSelectedFont] = useState('Arial');
@@ -261,10 +269,6 @@ export function CustomDesignPage() {
   // Recent uploads state
   const [recentUploads, setRecentUploads] = useState<Array<{ url: string; width: number; height: number; publicId: string; timestamp: number }>>([]);
   
-  // Saved designs state
-  const [savedDesigns, setSavedDesigns] = useState<any[]>([]);
-  const [isLoadingDesigns, setIsLoadingDesigns] = useState(false);
-  
   // Canvas resources hook
   const { graphics, patterns, fetchGraphics } = useCanvasResources();
   const [selectedGraphicCategory, setSelectedGraphicCategory] = useState<'all' | 'icon' | 'logo' | 'illustration' | 'template'>('all');
@@ -273,20 +277,38 @@ export function CustomDesignPage() {
   const canvasWidth = Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100));
   const canvasHeight = Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100));
 
-  // Initialize Fabric.js canvas
-  const fabricCanvas = useFabricCanvas('design-canvas', {
+  // Initialize BOTH Fabric.js canvases (front and back)
+  const frontCanvas = useFabricCanvas('front-canvas', 'front', {
     canvasWidth,
     canvasHeight,
     onObjectAdded: (obj) => {
-      console.log('Object added:', obj);
+      console.log('Front canvas - Object added:', obj);
     },
     onObjectRemoved: (obj) => {
-      console.log('Object removed:', obj);
+      console.log('Front canvas - Object removed:', obj);
     },
     onSelectionCreated: (obj) => {
-      console.log('Object selected:', obj);
+      console.log('Front canvas - Object selected:', obj);
     },
   });
+
+  const backCanvas = useFabricCanvas('back-canvas', 'back', {
+    canvasWidth,
+    canvasHeight,
+    initDelay: 500, // Increased delay to prevent React DOM conflicts with front canvas
+    onObjectAdded: (obj) => {
+      console.log('Back canvas - Object added:', obj);
+    },
+    onObjectRemoved: (obj) => {
+      console.log('Back canvas - Object removed:', obj);
+    },
+    onSelectionCreated: (obj) => {
+      console.log('Back canvas - Object selected:', obj);
+    },
+  });
+
+  // Active canvas pointer - switches based on selected view
+  const fabricCanvas = selectedView === 'front' ? frontCanvas : backCanvas;
 
   // Initialize cart hook
   const { addToCart } = useCart();
@@ -299,6 +321,174 @@ export function CustomDesignPage() {
     return activeVariant !== null;
   };
 
+  // Utility function to get mockup image URL
+  const getMockupImageUrl = useCallback((view: ViewSide): string | null => {
+    if (!activeVariant) {
+      console.log('getMockupImageUrl: No active variant');
+      return null;
+    }
+
+    console.log('getMockupImageUrl called:', {
+      view,
+      activeVariant: {
+        category: activeVariant.category,
+        hasImages: !!activeVariant.images,
+        imagesLength: activeVariant.images?.length || 0,
+        productName: activeVariant.productName,
+      }
+    });
+
+    // PRIMARY: Try to get from database (images already exist!)
+    if (activeVariant.images && activeVariant.images.length > 0) {
+      const mockupImage = activeVariant.images.find(img => img.type === view);
+      console.log('Found mockup from DB:', mockupImage);
+      if (mockupImage?.url) return mockupImage.url;
+    }
+
+    // FALLBACK: Use categoryImages object only if DB missing
+    if (activeVariant.category && categoryImages[activeVariant.category]) {
+      const fallbackUrl = categoryImages[activeVariant.category][view] || null;
+      console.log('Using fallback categoryImages:', {
+        category: activeVariant.category,
+        view,
+        url: fallbackUrl
+      });
+      return fallbackUrl;
+    }
+
+    // FINAL FALLBACK: Return default T-Shirt image if category doesn't match
+    console.log('Using default T-Shirt fallback');
+    return view === 'front' ? whiteTshirtFront : whiteTshirtBack;
+  }, [activeVariant]);
+
+  // Time formatter for auto-save status
+  const formatTimeAgo = (date: Date): string => {
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
+
+  // Auto-save function with debouncing
+  const autoSaveDesignTimeoutRef = useRef<number | null>(null);
+
+  const autoSaveDesign = useCallback(async () => {
+    try {
+      // Skip auto-save if we're currently restoring canvas from database
+      if (isRestoringCanvasRef.current) {
+        console.log('⏸️ Auto-save skipped - canvas is being restored');
+        return;
+      }
+
+      console.log('🔍 AUTO-SAVE CALLED - Checking conditions...', {
+        hasUser: !!user,
+        hasActiveVariant: !!activeVariant,
+        hasFrontCanvas: !!frontCanvas.canvasRef,
+        hasBackCanvas: !!backCanvas.canvasRef,
+        timestamp: new Date().toLocaleTimeString()
+      });
+
+      if (!user || !activeVariant) {
+        console.log('⏸️ Auto-save skipped - no user or variant', { user: !!user, activeVariant: !!activeVariant });
+        return;
+      }
+
+      if (!frontCanvas.canvasRef || !backCanvas.canvasRef) {
+        console.error('❌ Auto-save FAILED - Canvas not initialized!', {
+          frontCanvas: !!frontCanvas.canvasRef,
+          backCanvas: !!backCanvas.canvasRef
+        });
+        return;
+      }
+
+      setIsSaving(true);
+
+      const frontJson = frontCanvas.canvasRef.toJSON();
+      const backJson = backCanvas.canvasRef.toJSON();
+
+      const frontObjectCount = frontJson?.objects?.length || 0;
+      const backObjectCount = backJson?.objects?.length || 0;
+
+      console.log('💾 AUTO-SAVING DESIGN...', {
+        userId: user.id,
+        productId: activeVariant.productId,
+        size: selectedSize,
+        printOption: selectedPrintOption,
+        printAreaPreset: printAreaSize,
+        frontObjects: frontObjectCount,
+        backObjects: backObjectCount,
+        frontJsonLength: JSON.stringify(frontJson).length,
+        backJsonLength: JSON.stringify(backJson).length,
+        timestamp: new Date().toLocaleTimeString()
+      });
+
+      const payload = {
+        userId: user.id,
+        customizableProductId: parseInt(activeVariant.productId),
+        selectedSize: selectedSize,
+        selectedPrintOption: selectedPrintOption,
+        printAreaPreset: printAreaSize,
+        frontCanvasJson: frontJson ? JSON.stringify(frontJson) : null,
+        backCanvasJson: backJson ? JSON.stringify(backJson) : null,
+        frontThumbnailUrl: null,
+        backThumbnailUrl: null,
+      };
+
+      console.log('📤 Sending save request to /api/design/save...', payload);
+
+      const response = await fetch('/api/design/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      console.log('📥 Save response status:', response.status, response.statusText);
+
+      if (response.ok) {
+        const result = await response.json();
+        setLastSaved(new Date());
+        setHasUnsavedChanges(false);
+        console.log('✅ AUTO-SAVE SUCCESS - Design saved with', frontObjectCount + backObjectCount, 'total objects', result);
+        toast.success(`Saved with ${frontObjectCount + backObjectCount} objects`);
+      } else {
+        const errorText = await response.text();
+        console.error('❌ AUTO-SAVE FAILED - Server error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        toast.error('Auto-save failed: ' + errorText);
+      }
+    } catch (error) {
+      console.error('❌ AUTO-SAVE EXCEPTION:', {
+        error: error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      toast.error('Auto-save error: ' + (error instanceof Error ? error.message : 'Unknown'));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [user, activeVariant, selectedSize, selectedPrintOption, printAreaSize, frontCanvas.canvasRef, backCanvas.canvasRef]);
+
+  // Debounced auto-save (3 seconds)
+  const triggerAutoSave = useCallback(() => {
+    setHasUnsavedChanges(true);
+
+    console.log('⏰ Auto-save triggered - will save in 3 seconds...');
+
+    // Clear existing timeout
+    if (autoSaveDesignTimeoutRef.current) {
+      clearTimeout(autoSaveDesignTimeoutRef.current);
+    }
+
+    // Set new timeout for 3 seconds
+    autoSaveDesignTimeoutRef.current = window.setTimeout(() => {
+      autoSaveDesign();
+    }, 3000);
+  }, [autoSaveDesign]);
+
   // NEW: Show warning when user tries to add object without selecting variant
   const showVariantRequiredWarning = () => {
     // Show alert
@@ -310,7 +500,6 @@ export function CustomDesignPage() {
     // Close other panels
     setIsUploadPanelOpen(false);
     setIsTextPanelOpen(false);
-    setIsLibraryPanelOpen(false);
     setIsGraphicsPanelOpen(false);
     setIsPatternsPanelOpen(false);
     
@@ -408,324 +597,37 @@ export function CustomDesignPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
-  // Save design to database
-  const handleSave = useCallback(async () => {
-    if (!fabricCanvas.canvasRef || !activeVariant) {
-      console.log('Cannot save: no canvas or active variant');
-      return;
-    }
-
-    // Check authentication
-    if (!user) {
-      console.error('❌ Cannot save: User not authenticated');
-      toast.error('Please log in to save your design');
-      throw new Error('User not authenticated');
-    }
-
-    console.log('💾 Starting save process...', {
-      productId: activeVariant.productId,
-      view: selectedView,
-      userId: user.id
-    });
-
-    // Validate design before saving
-    const validation = validateDesign(fabricCanvas.canvasRef, printAreaSize);
-    
-    // Show errors if any
-    if (!validation.valid) {
-      console.error('❌ Validation failed:', validation.errors);
-      validation.errors.forEach(error => toast.error(error));
-      setDesignStatus({ type: 'idle' });
-      throw new Error('Validation failed');
-    }
-
-    // Show warnings but allow save
-    if (validation.warnings.length > 0) {
-      console.warn('⚠️ Validation warnings:', validation.warnings);
-      validation.warnings.forEach(warning => toast.warning(warning));
-    }
-
-    try {
-      setDesignStatus({ type: 'saving', message: 'Saving design...' });
-      
-      console.log('📡 Saving design via proxy');
-      
-      // 1. Export canvas to thumbnail
-      console.log('🖼️ Exporting canvas thumbnail...');
-      const thumbnailDataURL = exportCanvasToDataURL(fabricCanvas.canvasRef, {
-        format: 'png',
-        quality: 0.8,
-        multiplier: 0.5  // Smaller for thumbnail
-      });
-      console.log('✅ Thumbnail exported');
-      
-      // 2. Upload thumbnail to Cloudinary
-      console.log('☁️ Uploading to Cloudinary...');
-      const thumbnailBlob = await (await fetch(thumbnailDataURL)).blob();
-      const formData = new FormData();
-      formData.append('image', thumbnailBlob, 'thumbnail.png');
-      formData.append('userId', user.id);
-      formData.append('productId', activeVariant.productId);
-      formData.append('view', selectedView);
-      
-      const uploadResponse = await fetch(`/api/custom-design/upload-preview`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
-      
-      console.log('📤 Upload response status:', uploadResponse.status);
-      
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error('❌ Upload failed:', errorText);
-        throw new Error(`Failed to upload thumbnail: ${uploadResponse.status} ${errorText}`);
-      }
-      
-      const uploadResult = await uploadResponse.json();
-      const thumbnailUrl = uploadResult.url;
-      
-      // 3. Get canvas JSON
-      const canvasJSON = JSON.stringify(fabricCanvas.canvasRef.toJSON());
-      const view = selectedView;
-      
-      // 4. Load existing design to preserve other canvas view
-      let existingFrontCanvas = null;
-      let existingBackCanvas = null;
-      let existingFrontThumbnail = null;
-      let existingBackThumbnail = null;
-      
-      try {
-        const loadResponse = await fetch(`/api/design/load/${activeVariant.productId}?userId=${user.id}`, {
-          credentials: 'include',
-        });
-        if (loadResponse.ok) {
-          const loadResult = await loadResponse.json();
-          existingFrontCanvas = loadResult.data?.frontCanvasJson;
-          existingBackCanvas = loadResult.data?.backCanvasJson;
-          existingFrontThumbnail = loadResult.data?.frontThumbnailUrl;
-          existingBackThumbnail = loadResult.data?.backThumbnailUrl;
-          console.log('✅ Loaded existing design to preserve other view');
-        } else if (loadResponse.status === 404) {
-          console.log('ℹ️ No existing design found (this is normal for new designs)');
-        } else {
-          console.warn('⚠️ Unexpected status when loading existing design:', loadResponse.status);
-        }
-      } catch (error) {
-        console.log('ℹ️ No existing design to preserve (this is normal for new designs)');
-      }
-      
-      // 5. Save to database - preserve other view's data
-      const response = await fetchWithRetry(
-        '/api/design/save',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            userId: user.id,
-            customizableProductId: parseInt(activeVariant.productId),
-            selectedSize: selectedSize || 'M',
-            selectedPrintOption: view === 'front' ? 'front' : 'back',
-            printAreaPreset: printAreaSize,
-            frontCanvasJson: view === 'front' ? canvasJSON : existingFrontCanvas,
-            backCanvasJson: view === 'back' ? canvasJSON : existingBackCanvas,
-            frontThumbnailUrl: view === 'front' ? thumbnailUrl : existingFrontThumbnail,
-            backThumbnailUrl: view === 'back' ? thumbnailUrl : existingBackThumbnail,
-          }),
-        },
-        {
-          maxRetries: 2,
-          onRetry: (attempt) => {
-            toast.info(`Save failed, retrying... (Attempt ${attempt}/2)`);
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Save failed:', formatErrorForLogging({ status: response.status, message: errorData.message || response.statusText }));
-        throw new Error(errorData.message || `Failed to save design: ${response.statusText}`);
-      }
-
-      setDesignStatus({ type: 'saved', message: 'Auto-saved!' });
-      
-      // Auto-hide success message
-      setTimeout(() => {
-        setDesignStatus({ type: 'idle' });
-      }, 3000);
-      
-    } catch (error) {
-      console.error('Save error:', formatErrorForLogging(error));
-      const userMessage = getErrorMessage(error);
-      toast.error(userMessage);
-      setDesignStatus({ 
-        type: 'save-error',
-        message: userMessage
-      });
-    }
-  }, [fabricCanvas.canvasRef, activeVariant, selectedView, printAreaSize, selectedSize, user]);
-
-  // Handle view switching (front/back) - save current view first
-  const handleViewSwitch = useCallback(async (newView: ViewSide) => {
+  // Handle view switching (front/back) - simplified without save
+  const handleViewSwitch = useCallback((newView: ViewSide) => {
     if (newView === selectedView) return;
-    
-    // Save current view before switching
-    if (fabricCanvas.canvasRef && activeVariant) {
-      const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
-      if (objects.length > 0) {
-        console.log(`Saving ${selectedView} view before switching to ${newView}...`);
-        await handleSave();
-        console.log('✅ Save complete, switching view now');
-      }
-    }
-    
-    // Only switch after save completes (or if no save needed)
     setSelectedView(newView);
-  }, [selectedView, fabricCanvas.canvasRef, activeVariant, handleSave]);
+  }, [selectedView]);
 
-  // Navigate to preview page with design data
-  // Preview handler - NOT wrapped in useCallback to always have fresh canvas reference
-  const handlePreview = async () => {
-    console.log('🔵 Preview button clicked');
-    console.log('🔵 Canvas ref exists:', !!fabricCanvas.canvasRef);
-    console.log('🔵 Active variant:', activeVariant?.productName || 'none');
-    
-    // Get current canvas reference directly
-    const canvas = fabricCanvas.canvasRef;
-    
-    // Validation 1: Canvas must exist
-    if (!canvas) {
-      console.error('❌ Canvas not initialized');
-      toast.error('Canvas not ready. Please wait and try again.');
-      return;
-    }
-
-    // Validation 2: Variant must be selected
+  // Open preview modal
+  const handlePreview = () => {
+    // Validation: Variant must be selected
     if (!activeVariant) {
-      console.error('❌ No variant selected');
       toast.error('Please select a product first');
       return;
     }
 
-    // Get all objects excluding print area markers
-    const allObjects = canvas.getObjects();
-    console.log('🔵 Total objects on canvas:', allObjects.length);
-    
-    const designObjects = allObjects.filter(obj => {
-      const name = (obj as any).name || '';
-      return !name.includes('print-area') && !name.includes('boundary');
-    });
-    console.log('🔵 Design objects (excluding markers):', designObjects.length);
+    // Validation: Must have at least one design element on active canvas
+    const canvas = fabricCanvas.canvasRef;
+    if (canvas) {
+      const designObjects = canvas.getObjects().filter(obj => {
+        const name = (obj as any).name || '';
+        return !name.includes('print-area') && !name.includes('boundary');
+      });
 
-    // Validation 3: Must have at least one design element
-    if (designObjects.length === 0) {
-      console.error('❌ No design objects found');
-      toast.error('Please add some design elements before previewing');
-      return;
-    }
-
-    try {
-      // Save to database first if user is logged in (so design persists)
-      if (user) {
-        console.log('🔵 User logged in, saving design to database before preview...');
-        try {
-          await handleSave();
-          console.log('✅ Design saved to database');
-        } catch (saveError) {
-          console.warn('⚠️ Save failed, but continuing to preview:', saveError);
-          // Don't block preview if save fails
-        }
-      }
-
-      // Export canvas JSON
-      const canvasJSON = canvas.toJSON();
-      const canvasData = JSON.stringify(canvasJSON);
-      console.log('✅ Canvas JSON exported, objects:', canvasJSON.objects?.length || 0);
-      
-      // Get print area dimensions
-      const printArea = PRINT_AREA_PRESETS[printAreaSize];
-      if (!printArea) {
-        console.error('❌ Invalid print area preset:', printAreaSize);
-        toast.error('Invalid print area configuration');
+      if (designObjects.length === 0) {
+        toast.error('Please add some design elements before previewing');
         return;
       }
-      
-      // Calculate bounds for export
-      const printAreaBounds = getPrintAreaBounds(canvas, {
-        width: printArea.width,
-        height: printArea.height,
-      });
-      console.log('🔵 Print area bounds:', printAreaBounds);
-      
-      // Export preview image
-      const previewImage = exportCanvasToDataURL(canvas, {
-        format: 'png',
-        quality: 1,
-        multiplier: 2,
-        ...printAreaBounds,
-      });
-      console.log('✅ Preview image exported, length:', previewImage.length);
-
-      // Build navigation state matching DesignState interface exactly
-      const navigationState = {
-        designData: canvasData,
-        variant: {
-          id: activeVariant.id,
-          productId: activeVariant.productId,
-          productName: activeVariant.productName,
-          variantName: activeVariant.variantName,
-          size: selectedSize || 'M',
-          image: activeVariant.image,
-          retailPrice: activeVariant.retailPrice,
-          totalPrice: activeVariant.totalPrice,
-        },
-        view: selectedView,
-        printAreaSize,
-        previewImage,
-        timestamp: Date.now(),
-      };
-
-      console.log('🔵 Navigation state built:', {
-        designDataLength: navigationState.designData.length,
-        variantName: navigationState.variant.productName,
-        view: navigationState.view,
-        printAreaSize: navigationState.printAreaSize,
-        previewImageLength: navigationState.previewImage.length,
-      });
-
-      // Navigate to preview page
-      console.log('🔵 Calling navigate to /custom-design-preview');
-      navigate('/custom-design-preview', { state: navigationState });
-      console.log('✅ Navigate called successfully');
-      
-    } catch (error) {
-      console.error('❌ Preview error:', error);
-      console.error('❌ Error stack:', (error as Error).stack);
-      toast.error('Failed to generate preview: ' + (error as Error).message);
     }
+
+    // Open preview modal
+    setIsPreviewModalOpen(true);
   };
-
-  // Trigger auto-save with debounce (2 seconds)
-  const triggerAutoSave = useCallback(() => {
-    if (!fabricCanvas.canvasRef) return;
-    
-    // Count actual design objects (exclude print area markers)
-    const objects = fabricCanvas.canvasRef.getObjects().filter(obj => !(obj as any).name?.includes('print-area'));
-    
-    // Auto-save when there's at least 1 object
-    if (objects.length < 1) {
-      return;
-    }
-    
-    if (saveTimeoutRef.current) {
-      window.clearTimeout(saveTimeoutRef.current);
-    }
-    
-    saveTimeoutRef.current = window.setTimeout(() => {
-      handleSave();
-    }, 2000);
-  }, [handleSave, fabricCanvas.canvasRef]);
 
   // Check if we can add more objects
   const canAddMoreObjects = useCallback(() => {
@@ -747,170 +649,10 @@ export function CustomDesignPage() {
     
     if (movedCount > 0) {
       toast.success(`Moved ${movedCount} object${movedCount > 1 ? 's' : ''} into print area`);
-      triggerAutoSave();
     } else {
       toast.info('All objects are already within the print area');
     }
-  }, [fabricCanvas.canvasRef, printAreaSize, triggerAutoSave]);
-
-  // Load saved design from database (only if user is logged in)
-  const loadUserDesign = useCallback(async () => {
-    // Skip if no user or no variant/canvas
-    if (!user?.id || !activeVariant || !fabricCanvas.canvasRef) {
-      console.log('loadUserDesign: Skipped - missing user, variant, or canvas');
-      return;
-    }
-    
-    console.log('loadUserDesign: Attempting to load for product', activeVariant.productId);
-    isLoadingDesignRef.current = true;
-
-    try {
-      const response = await fetch(`/api/design/load/${activeVariant.productId}?userId=${user.id}`, {
-        credentials: 'include',
-      });
-      
-      if (response.status === 404) {
-        // No saved design - this is normal, just start fresh
-        console.log('No saved design found - starting fresh');
-        isLoadingDesignRef.current = false;
-        return;
-      }
-      
-      if (!response.ok) {
-        console.warn('Failed to load design, status:', response.status);
-        isLoadingDesignRef.current = false;
-        return;
-      }
-      
-      const result = await response.json();
-      const data = result.data;
-      
-      if (!data) {
-        console.log('No design data in response');
-        isLoadingDesignRef.current = false;
-        return;
-      }
-      
-      // Restore print area preset if saved
-      if (data.printAreaPreset) {
-        setPrintAreaSize(data.printAreaPreset);
-      }
-      
-      // Load canvas data based on current view
-      const canvasData = selectedView === 'front' ? data.frontCanvasJson : data.backCanvasJson;
-      
-      if (canvasData && fabricCanvas.canvasRef) {
-        fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
-          fabricCanvas.canvasRef?.renderAll();
-          console.log('✅ Design loaded from database');
-          toast.success('Previous design restored');
-        });
-      }
-      
-      isLoadingDesignRef.current = false;
-    } catch (error) {
-      console.warn('Error loading design (will start fresh):', error);
-      isLoadingDesignRef.current = false;
-    }
-  }, [activeVariant?.productId, selectedView, fabricCanvas.canvasRef, user?.id, setPrintAreaSize]);
-
-  // Fetch all saved designs for user
-  const fetchSavedDesigns = useCallback(async () => {
-    if (!user?.id) return;
-    
-    setIsLoadingDesigns(true);
-    try {
-      const response = await fetch(`/api/saved-designs/all?userId=${user.id}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch saved designs');
-      }
-      
-      const data = await response.json();
-      if (data.success) {
-        setSavedDesigns(data.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching saved designs:', error);
-      toast.error('Failed to load saved designs from library');
-    } finally {
-      setIsLoadingDesigns(false);
-    }
-  }, [user]);
-
-  // Load design from My Library
-  const handleLoadDesign = useCallback(async (design: any) => {
-    // If different product, navigate to that product
-    if (activeVariant?.productId !== design.customizableProductId.toString()) {
-      // Store design to load after navigation
-      sessionStorage.setItem('designToLoad', JSON.stringify(design));
-      toast.info(`Switching to ${design.product.name}...`);
-      // Navigate to custom design page with product ID
-      navigate(`/custom-design?productId=${design.customizableProductId}`);
-      return;
-    }
-    
-    // Same product - just load the design
-    try {
-      isLoadingDesignRef.current = true;
-      setDesignStatus({ type: 'loading', message: 'Loading design...' });
-      
-      // Load canvas JSON
-      if (selectedView === 'front' && design.frontCanvasJson) {
-        await fabricCanvas.loadCanvasFromJSON(design.frontCanvasJson);
-      } else if (selectedView === 'back' && design.backCanvasJson) {
-        await fabricCanvas.loadCanvasFromJSON(design.backCanvasJson);
-      }
-      
-      // Update size and print option
-      setSelectedSize(design.selectedSize);
-      setSelectedPrintOption(design.selectedPrintOption);
-      
-      // Close library panel
-      setIsLibraryPanelOpen(false);
-      
-      setDesignStatus({ type: 'loaded', message: 'Design loaded successfully' });
-      toast.success('Design loaded!');
-      
-      setTimeout(() => { isLoadingDesignRef.current = false; }, 500);
-    } catch (error) {
-      console.error('Error loading design:', error);
-      toast.error('Failed to load design');
-      setDesignStatus({ type: 'load-error' });
-      isLoadingDesignRef.current = false;
-    }
-  }, [activeVariant, selectedView, fabricCanvas, navigate]);
-
-  // Delete saved design
-  const handleDeleteDesign = useCallback(async (designId: number) => {
-    if (!user?.id) return;
-    
-    try {
-      const response = await fetch(`/api/saved-designs/${designId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete design');
-      }
-      
-      // Refresh designs list
-      setSavedDesigns(prev => prev.filter(d => d.id !== designId));
-      toast.success('Design deleted from library');
-    } catch (error) {
-      console.error('Error deleting design:', error);
-      toast.error('Failed to delete design');
-    }
-  }, [user]);
-
-  // Fetch designs when library panel opens
-  useEffect(() => {
-    if (isLibraryPanelOpen && user?.id) {
-      fetchSavedDesigns();
-    }
-  }, [isLibraryPanelOpen, user, fetchSavedDesigns]);
+  }, [fabricCanvas.canvasRef, printAreaSize]);
 
   // Alignment functions
   const alignLeft = useCallback(() => {
@@ -1307,14 +1049,7 @@ export function CustomDesignPage() {
 
     const canvas = fabricCanvas.canvasRef;
     const handleCanvasChange = () => {
-      // Don't trigger auto-save if we're loading a design
-      if (isLoadingDesignRef.current) {
-        console.log('Skipping auto-save during design load');
-        return;
-      }
-      
       captureCanvasState();
-      triggerAutoSave(); // Trigger auto-save on canvas changes
     };
 
     canvas.on('object:added', handleCanvasChange);
@@ -1328,7 +1063,110 @@ export function CustomDesignPage() {
       canvas.off('object:removed', handleCanvasChange);
       canvas.off('text:changed', handleCanvasChange);
     };
-  }, [fabricCanvas.canvasRef, captureCanvasState, triggerAutoSave]);
+  }, [fabricCanvas.canvasRef, captureCanvasState]);
+
+  // Auto-save on canvas changes - listen to BOTH canvases
+  useEffect(() => {
+    if (!frontCanvas.canvasRef || !backCanvas.canvasRef) {
+      console.log('⏸️ Auto-save listeners NOT attached - canvas not ready');
+      return;
+    }
+
+    console.log('✅ Attaching auto-save listeners to canvases');
+
+    const handleAutoSaveTrigger = (e: any) => {
+      // Skip auto-save trigger during canvas restoration
+      if (isRestoringCanvasRef.current) return;
+      
+      // Only log for non-text events to reduce spam
+      if (e?.type !== 'text:changed') {
+        console.log('🎨 Canvas event:', e?.type || 'unknown');
+      }
+      triggerAutoSave();
+    };
+
+    // Attach to front canvas
+    frontCanvas.canvasRef.on('object:added', handleAutoSaveTrigger);
+    frontCanvas.canvasRef.on('object:modified', handleAutoSaveTrigger);
+    frontCanvas.canvasRef.on('object:removed', handleAutoSaveTrigger);
+    frontCanvas.canvasRef.on('text:changed', handleAutoSaveTrigger);
+
+    // Attach to back canvas
+    backCanvas.canvasRef.on('object:added', handleAutoSaveTrigger);
+    backCanvas.canvasRef.on('object:modified', handleAutoSaveTrigger);
+    backCanvas.canvasRef.on('object:removed', handleAutoSaveTrigger);
+    backCanvas.canvasRef.on('text:changed', handleAutoSaveTrigger);
+
+    return () => {
+      // Cleanup front canvas
+      frontCanvas.canvasRef?.off('object:added', handleAutoSaveTrigger);
+      frontCanvas.canvasRef?.off('object:modified', handleAutoSaveTrigger);
+      frontCanvas.canvasRef?.off('object:removed', handleAutoSaveTrigger);
+      frontCanvas.canvasRef?.off('text:changed', handleAutoSaveTrigger);
+
+      // Cleanup back canvas
+      backCanvas.canvasRef?.off('object:added', handleAutoSaveTrigger);
+      backCanvas.canvasRef?.off('object:modified', handleAutoSaveTrigger);
+      backCanvas.canvasRef?.off('object:removed', handleAutoSaveTrigger);
+      backCanvas.canvasRef?.off('text:changed', handleAutoSaveTrigger);
+
+      // Clear timeout on unmount
+      if (autoSaveDesignTimeoutRef.current) {
+        clearTimeout(autoSaveDesignTimeoutRef.current);
+      }
+    };
+  }, [frontCanvas.canvasRef, backCanvas.canvasRef, triggerAutoSave]);
+
+  // Restore saved designs when canvases become ready
+  useEffect(() => {
+    // Only run if BOTH canvases are initialized AND we have pending design data
+    if (!frontCanvas.canvasRef || !backCanvas.canvasRef || !pendingDesignData) {
+      return;
+    }
+
+    console.log('🎨 Canvases ready! Restoring pending design data...');
+
+    // Set restoration flag to prevent auto-save during load
+    isRestoringCanvasRef.current = true;
+
+    const { frontCanvasJson, backCanvasJson } = pendingDesignData;
+
+    // Restore front canvas
+    if (frontCanvasJson && frontCanvas.canvasRef) {
+      try {
+        const parsedFront = typeof frontCanvasJson === 'string' ? JSON.parse(frontCanvasJson) : frontCanvasJson;
+        console.log('🖼️ Restoring front canvas:', parsedFront.objects?.length || 0, 'objects');
+        frontCanvas.canvasRef.loadFromJSON(parsedFront, () => {
+          frontCanvas.canvasRef?.renderAll();
+          console.log('✅ Front canvas restored');
+        });
+      } catch (error) {
+        console.error('❌ Failed to restore front canvas:', error);
+      }
+    }
+
+    // Restore back canvas
+    if (backCanvasJson && backCanvas.canvasRef) {
+      try {
+        const parsedBack = typeof backCanvasJson === 'string' ? JSON.parse(backCanvasJson) : backCanvasJson;
+        console.log('🖼️ Restoring back canvas:', parsedBack.objects?.length || 0, 'objects');
+        backCanvas.canvasRef.loadFromJSON(parsedBack, () => {
+          backCanvas.canvasRef?.renderAll();
+          console.log('✅ Back canvas restored');
+        });
+      } catch (error) {
+        console.error('❌ Failed to restore back canvas:', error);
+      }
+    }
+
+    // Clear the pending data and restoration flag
+    setPendingDesignData(null);
+    setTimeout(() => {
+      isRestoringCanvasRef.current = false;
+      console.log('✅ Restoration complete - auto-save re-enabled');
+    }, 500);
+
+  }, [frontCanvas.canvasRef, backCanvas.canvasRef, pendingDesignData]);
 
   // Handle grid rendering and snap-to-grid
   useEffect(() => {
@@ -1390,83 +1228,6 @@ export function CustomDesignPage() {
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  // Note: localStorage backup REMOVED for security - localStorage persists across user accounts
-  // All data now saved to database only (manual save or auto-save when 1+ objects)
-
-  // Force save on window close/refresh
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Force immediate save if there's unsaved work
-      if (fabricCanvas.canvasRef && activeVariant && designStatus.type !== 'saving') {
-        handleSave();
-      }
-      
-      // Only show warning if save is in progress or failed
-      if (designStatus.type === 'saving' || designStatus.type === 'save-error') {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [fabricCanvas.canvasRef, activeVariant, handleSave, designStatus.type]);
-
-  // Load saved design on mount or when variant/view changes
-  useEffect(() => {
-    console.log('Load effect triggered:', { 
-      hasVariant: !!activeVariant, 
-      hasCanvas: !!fabricCanvas.canvasRef,
-      productId: activeVariant?.productId,
-      view: selectedView,
-      isHydrating,
-      hasUser: !!user
-    });
-    
-    // Wait for auth hydration to complete before loading
-    if (isHydrating) {
-      console.log('Skipped loadUserDesign - auth still hydrating');
-      return;
-    }
-    
-    // Only try to load if logged in and have a variant
-    if (activeVariant && fabricCanvas.canvasRef && user) {
-      console.log('Calling loadUserDesign...');
-      loadUserDesign();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVariant?.productId, selectedView, isHydrating, user?.id]); // Intentionally minimal deps
-  
-  // Centralized toast notification handler - shows messages based on status changes
-  useEffect(() => {
-    const { type, message } = designStatus;
-    
-    switch (type) {
-      case 'loaded':
-        toast.success(message || 'Design loaded successfully');
-        // Reset to idle after showing message
-        setTimeout(() => setDesignStatus({ type: 'idle' }), 100);
-        break;
-      case 'saved':
-        toast.success('Design saved');
-        // Reset to idle after 3 seconds
-        setTimeout(() => setDesignStatus({ type: 'idle' }), 3000);
-        break;
-      case 'save-error':
-        toast.error(message || 'Could not save your design. Changes are backed up locally.');
-        // Reset to idle after 5 seconds
-        setTimeout(() => setDesignStatus({ type: 'idle' }), 5000);
-        break;
-      case 'load-error':
-        toast.error(message || 'Could not load design');
-        setTimeout(() => setDesignStatus({ type: 'idle' }), 3000);
-        break;
-    }
-  }, [designStatus]);
-  
   // Auto-open Variant Details panel on mount (whether or not there's a variant)
   useEffect(() => {
     setIsVariantDetailsPanelOpen(true);
@@ -1513,6 +1274,8 @@ export function CustomDesignPage() {
       image: state.variant.image,
       retailPrice: state.variant.retailPrice,
       totalPrice: state.variant.totalPrice,
+      category: undefined, // Not available from navigation state
+      images: undefined, // Not available from navigation state
     });
     
     // Restore size
@@ -1540,16 +1303,13 @@ export function CustomDesignPage() {
       }
       
       try {
-        isLoadingDesignRef.current = true;
         const canvasData = JSON.parse(state.designData);
         fabricCanvas.canvasRef.loadFromJSON(canvasData, () => {
           fabricCanvas.canvasRef?.renderAll();
           console.log('✅ Canvas restored from preview state');
-          isLoadingDesignRef.current = false;
         });
       } catch (error) {
         console.error('Failed to restore canvas from preview:', error);
-        isLoadingDesignRef.current = false;
       }
     };
     
@@ -1568,37 +1328,73 @@ export function CustomDesignPage() {
   // Load last-used variant ONLY on genuine page refresh (not category navigation)
   useEffect(() => {
     const loadLastUsedVariant = async () => {
+      console.log('🔍 Load useEffect triggered', {
+        isHydrating,
+        hasUser: !!user,
+        productsLoading,
+        productsCount: allProducts?.length,
+        hasActiveVariant: !!activeVariant,
+        locationState: location.state,
+        hasLoadedBefore: hasLoadedDesignRef.current
+      });
+
+      // Prevent multiple loads
+      if (hasLoadedDesignRef.current) {
+        console.log('⏸️ Already attempted load, skipping');
+        return;
+      }
+
       // Wait for auth and products to load
       if (isHydrating || !user || productsLoading || !allProducts || allProducts.length === 0) {
+        console.log('⏸️ Waiting for auth/products to load');
         return;
       }
 
       // If variant already selected, skip
       if (activeVariant) {
+        console.log('⏸️ Variant already active, skipping load');
         return;
       }
 
-      // CRITICAL: Only auto-load if user came from page refresh, NOT from navigation
-      // If location.state exists, user navigated here intentionally - don't auto-load
-      if (location.state?.category || location.state?.productName || location.state?.returnFromPreview) {
-        console.log('🚫 Skipping auto-load - user navigated here intentionally');
+      // Skip auto-load ONLY if user came from preview page (has returnFromPreview flag)
+      if (location.state?.returnFromPreview) {
+        console.log('🚫 Skipping auto-load - returning from preview');
+        hasLoadedDesignRef.current = true;
         return;
       }
+
+      // Mark as loaded to prevent re-runs
+      hasLoadedDesignRef.current = true;
+
+      console.log('📡 Fetching last-used design from API...');
 
       try {
         const response = await fetch(`/api/design/load/last-used?userId=${user.id}`, {
           credentials: 'include'
         });
 
+        console.log('📥 API Response:', response.ok, response.status);
+
         if (response.ok) {
           const result = await response.json();
+          console.log('📦 API Result:', result);
           const lastProductId = result.data?.customizableProductId;
           
           if (lastProductId) {
-            console.log('🔄 Loading last-used variant from page refresh:', lastProductId);
+            console.log('🔄 Loading last-used variant from page refresh:', {
+              lastProductId,
+              type: typeof lastProductId,
+              allProductsCount: allProducts.length,
+              allProductIds: allProducts.map(p => ({ id: p.id, type: typeof p.id, name: p.name }))
+            });
             
-            // Find the product in the loaded products
-            const product = allProducts.find(p => parseInt(p.id) === lastProductId);
+            // Find the product in the loaded products - handle both string and number IDs
+            const product = allProducts.find(p => {
+              const pId = typeof p.id === 'string' ? parseInt(p.id) : p.id;
+              const lastId = typeof lastProductId === 'string' ? parseInt(lastProductId) : lastProductId;
+              return pId === lastId;
+            });
+            
             if (product) {
               console.log('✅ Product found:', product.name, 'Category:', product.category);
               
@@ -1625,7 +1421,28 @@ export function CustomDesignPage() {
                 isAvailable: true
               };
 
-              setActiveVariant(variant);
+              console.log('🎨 Setting activeVariant:', {
+                id: variant.id,
+                productName: variant.productName,
+                size: variant.size,
+                hasImages: !!product.images,
+                imagesCount: product.images?.length
+              });
+
+              // Map to activeVariant type (filter out extra fields)
+              setActiveVariant({
+                id: variant.id,
+                productId: variant.productId,
+                productName: variant.productName,
+                variantName: variant.variantName,
+                size: variant.size,
+                printOption: variant.printOption,
+                image: variant.image,
+                retailPrice: variant.retailPrice,
+                totalPrice: variant.totalPrice,
+                category: variant.category,
+                images: product.images
+              });
               setSelectedSize(result.data.selectedSize || 'M');
               
               // Validate printAreaPreset - ensure it's a valid key in PRINT_AREA_PRESETS
@@ -1635,23 +1452,41 @@ export function CustomDesignPage() {
                 ? (presetFromAPI as PrintAreaPreset) 
                 : 'Letter';
               setPrintAreaSize(validPreset);
-              
+
               setProductName(product.name);
               setProductCategory(product.category || 'T-Shirt');
-              
+
               console.log('✅ Variant restored from page refresh:', variant.productName, 'Print Area:', validPreset);
+
+              // Store canvas data - a separate useEffect will restore it when canvases are ready
+              setPendingDesignData({
+                frontCanvasJson: result.data.frontCanvasJson,
+                backCanvasJson: result.data.backCanvasJson
+              });
+              
+              console.log('💾 Canvas data stored for restoration', {
+                hasFrontJson: !!result.data.frontCanvasJson,
+                hasBackJson: !!result.data.backCanvasJson
+              });
             } else {
-              console.warn('❌ Product not found in allProducts. ID:', lastProductId);
+              console.warn('❌ Product not found in allProducts.', {
+                lastProductId,
+                availableProducts: allProducts.map(p => ({ id: p.id, name: p.name }))
+              });
             }
+          } else {
+            console.log('⚠️ No lastProductId in API response');
           }
+        } else {
+          console.warn('❌ API response not OK:', response.status, response.statusText);
         }
       } catch (error) {
-        console.error('Failed to load last-used variant:', error);
+        console.error('❌ Failed to load last-used variant:', error);
       }
     };
 
     loadLastUsedVariant();
-  }, [isHydrating, user, productsLoading, allProducts, activeVariant, location.state, selectedCategory]);
+  }, [isHydrating, user, productsLoading, allProducts, frontCanvas.canvasRef, backCanvas.canvasRef]);
 
   // Filter products by exact category match
   const categoryVariants = useMemo(() => {
@@ -1667,7 +1502,7 @@ export function CustomDesignPage() {
       // Get primary image
       const frontImage = product.images?.find(img => img.type === 'front');
       const imageUrl = frontImage?.url || product.images?.[0]?.url || 'https://images.unsplash.com/photo-1620799139834-6b8f844fbe61?w=500';
-      
+
       return {
         id: product.id,
         name: product.name,
@@ -1688,6 +1523,8 @@ export function CustomDesignPage() {
         retailPrice: product.retailPrice,
         frontPrintCost: product.frontPrintCost,
         backPrintCost: product.backPrintCost,
+        // CRITICAL: Include images array for mockup display
+        images: product.images,
       };
     });
   }, [categoryVariants]);
@@ -1705,56 +1542,130 @@ export function CustomDesignPage() {
   const handleAddToCustomize = (product: ClothingProduct) => {
     // Simplified for single variant
     
-    // 1. Validate size selection
-    if (!selectedSize) {
+    // 1. Determine the actual values to use (capture them NOW, not from potentially stale state)
+    const sizeToUse = selectedSize || (product.sizes && product.sizes.length > 0 ? product.sizes[0] : 'M');
+    const printOptionToUse = selectedPrintOption;
+    
+    // 2. Validate size selection
+    if (!sizeToUse) {
       alert('⚠️ Please select a size first');
       return;
     }
     
-    // 2. Calculate total price
+    // 3. Calculate total price
     let totalPrice = product.retailPrice || 350;
     
     // Add print cost
-    if (selectedPrintOption === 'front') {
+    if (printOptionToUse === 'front') {
       totalPrice += (product.frontPrintCost || 100);
-    } else if (selectedPrintOption === 'back') {
+    } else if (printOptionToUse === 'back') {
       totalPrice += (product.backPrintCost || 100);
     }
     
-    // 3. Determine variant name
+    // 4. Determine variant name
     const variantName = product.variantName || product.color || 'Default';
     
-    // 4. Create and set active variant
+    // 5. Create and set active variant with the ACTUAL values
     const variantId = `variant-${Date.now()}`;
     const newVariant = {
       id: variantId,
       productId: product.id,
       productName: product.name,
       variantName: variantName,
-      size: selectedSize,
-      printOption: selectedPrintOption,
+      size: sizeToUse, // ✅ Use captured value
+      printOption: printOptionToUse, // ✅ Use captured value
       image: product.image,
       retailPrice: product.retailPrice || 350,
-      totalPrice: totalPrice
+      totalPrice: totalPrice,
+      category: product.category,
+      images: product.images // FIXED: Pass images from product instead of undefined
     };
-    
+
     setActiveVariant(newVariant);
-    
-    // Set initial size selection (use the selected size or default to first available)
-    if (selectedSize) {
-      setSelectedSize(selectedSize);
-    } else if (product.sizes && product.sizes.length > 0) {
-      setSelectedSize(product.sizes[0]);
-    } else {
-      setSelectedSize('M'); // Default fallback
-    }
-    
-    // 5. Close clothing panel and open variant details
+
+    // Update state with the captured values
+    setSelectedSize(sizeToUse);
+
+    // 6. Close clothing panel and open variant details
     setIsClothingPanelOpen(false);
     setIsVariantDetailsPanelOpen(true);
+
+    // 7. CRITICAL: Save variant to database immediately (even with empty canvas)
+    // This ensures variant persists on page refresh
+    setTimeout(async () => {
+      try {
+        if (!user) {
+          console.error('❌ Cannot save variant - no user');
+          return;
+        }
+
+        console.log('💾 Saving variant immediately after selection...');
+        console.log('  Product ID:', product.id);
+        console.log('  Size:', sizeToUse);
+        console.log('  Print Option:', printOptionToUse);
+        console.log('  Print Area:', printAreaSize);
+        console.log('  Canvas ready:', {
+          front: !!frontCanvas.canvasRef,
+          back: !!backCanvas.canvasRef
+        });
+
+        const frontJson = frontCanvas.canvasRef?.toJSON();
+        const backJson = backCanvas.canvasRef?.toJSON();
+
+        console.log('  Canvas object counts:', {
+          front: frontJson?.objects?.length || 0,
+          back: backJson?.objects?.length || 0
+        });
+
+        const payload = {
+          userId: user.id,
+          customizableProductId: parseInt(product.id),
+          selectedSize: sizeToUse,
+          selectedPrintOption: printOptionToUse,
+          printAreaPreset: printAreaSize,
+          frontCanvasJson: frontJson ? JSON.stringify(frontJson) : null,
+          backCanvasJson: backJson ? JSON.stringify(backJson) : null,
+          frontThumbnailUrl: null,
+          backThumbnailUrl: null,
+        };
+
+        console.log('📤 Sending initial variant save request...', payload);
+
+        const response = await fetch('/api/design/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+
+        console.log('📥 Initial save response:', response.status, response.statusText);
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ Variant saved successfully on selection:', result);
+          setLastSaved(new Date());
+          toast.success('Product variant saved!');
+        } else {
+          const errorText = await response.text();
+          console.error('❌ Failed to save variant on selection:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorText
+          });
+          toast.error('Failed to save variant');
+        }
+      } catch (error) {
+        console.error('❌ Exception saving variant on selection:', {
+          error: error,
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        toast.error('Error saving variant');
+      }
+    }, 1000); // Increased delay to 1000ms to wait for both canvases (back canvas has 500ms delay)
   };
 
-  // Handle Add to Cart
+  // Handle Add to Cart - Updated for dual canvas
   const handleAddToCart = async () => {
     if (!activeVariant) {
       toast.error('Please select a product variant first');
@@ -1766,63 +1677,75 @@ export function CustomDesignPage() {
       return;
     }
 
-    if (!fabricCanvas.canvasRef) {
-      toast.error('Canvas not initialized');
-      return;
-    }
-
     setIsAddingToCart(true);
 
     try {
-      // 1. Export canvas design as thumbnail
-      const designDataURL = exportCanvasToDataURL(fabricCanvas.canvasRef, {
-        format: 'png',
-        quality: 0.9,
-        multiplier: 1
-      });
+      // Save current state first to ensure everything is up to date
+      await autoSaveDesign();
 
-      // 2. Upload thumbnail to Cloudinary
-      const designBlob = await (await fetch(designDataURL)).blob();
-      const formData = new FormData();
-      formData.append('image', designBlob, 'custom-design.png');
-      
-      const uploadResponse = await fetch(`/api/custom-design/upload-preview`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload design thumbnail');
+      // Export both canvases as thumbnails
+      const frontThumb = frontCanvas.canvasRef
+        ? exportCanvasToDataURL(frontCanvas.canvasRef, {
+            format: 'png',
+            quality: 0.9,
+            multiplier: 1
+          })
+        : null;
+
+      const backThumb = backCanvas.canvasRef
+        ? exportCanvasToDataURL(backCanvas.canvasRef, {
+            format: 'png',
+            quality: 0.9,
+            multiplier: 1
+          })
+        : null;
+
+      // Use the active view's thumbnail as the main thumbnail
+      const mainThumb = selectedView === 'front' ? frontThumb : backThumb;
+
+      // Upload main thumbnail to Cloudinary
+      let thumbnailUrl = '';
+      if (mainThumb) {
+        const designBlob = await (await fetch(mainThumb)).blob();
+        const formData = new FormData();
+        formData.append('image', designBlob, 'custom-design.png');
+
+        const uploadResponse = await fetch(`/api/custom-design/upload-preview`, {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+
+        if (uploadResponse.ok) {
+          const uploadResult = await uploadResponse.json();
+          thumbnailUrl = uploadResult?.url || '';
+        }
       }
-      
-      const uploadResult = await uploadResponse.json();
-      const thumbnailUrl = uploadResult?.url || '';
 
-      // 3. Get canvas JSON for customization data
-      const canvasJSON = fabricCanvas.canvasRef.toJSON();
-      
+      // Get canvas JSON for both canvases
+      const frontJSON = frontCanvas.canvasRef?.toJSON();
+      const backJSON = backCanvas.canvasRef?.toJSON();
+
       const customizationData = {
-        design: canvasJSON,
-        thumbnail: thumbnailUrl,
-        printOption: activeVariant.printOption,
+        frontDesign: frontJSON,
+        backDesign: backJSON,
+        frontThumbnail: frontThumb,
+        backThumbnail: backThumb,
+        printOption: selectedPrintOption,
         printAreaSize: printAreaSize,
-        side: selectedView,
+        activeView: selectedView,
       };
 
-      // 4. Calculate final price
-      const basePrice = activeVariant.retailPrice || 350;
-      const printCost = activeVariant.printOption === 'front' ? 50 : 
-                       activeVariant.printOption === 'back' ? 50 : 0;
-      const finalPrice = basePrice + printCost;
+      // Calculate final price
+      const finalPrice = activeVariant.totalPrice;
 
-      // 5. Add to cart
+      // Add to cart
       await addToCart(
         activeVariant.productId,
         `${activeVariant.productName} - ${activeVariant.variantName} (${selectedSize})`,
         finalPrice,
         thumbnailUrl || activeVariant.image,
-        productCategory || 'Custom Design',
+        activeVariant.category || 'Custom Design',
         1,
         selectedSize,
         activeVariant.variantName,
@@ -1830,12 +1753,84 @@ export function CustomDesignPage() {
       );
 
       toast.success('Added to cart successfully!');
-      
+
     } catch (error) {
       console.error('Add to cart error:', error);
       toast.error('Failed to add to cart. Please try again.');
     } finally {
       setIsAddingToCart(false);
+    }
+  };
+
+  // Handle Save to Library
+  const handleSaveToLibrary = async () => {
+    if (!user) {
+      toast.error('Please log in to save designs');
+      return;
+    }
+
+    if (!activeVariant) {
+      toast.error('No design to save');
+      return;
+    }
+
+    // Prompt for design name
+    const designName = prompt('Enter a name for your design:');
+    if (!designName || !designName.trim()) {
+      toast.error('Design name is required');
+      return;
+    }
+
+    try {
+      // Save current state first
+      await autoSaveDesign();
+
+      const frontJson = frontCanvas.canvasRef?.toJSON();
+      const backJson = backCanvas.canvasRef?.toJSON();
+
+      const frontThumb = frontCanvas.canvasRef
+        ? exportCanvasToDataURL(frontCanvas.canvasRef, {
+            format: 'png',
+            quality: 0.7,
+            multiplier: 0.5
+          })
+        : null;
+      const backThumb = backCanvas.canvasRef
+        ? exportCanvasToDataURL(backCanvas.canvasRef, {
+            format: 'png',
+            quality: 0.7,
+            multiplier: 0.5
+          })
+        : null;
+
+      const response = await fetch('/api/saved-designs/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userId: user.id,
+          customizableProductId: parseInt(activeVariant.productId),
+          designName: designName.trim(),
+          selectedSize: selectedSize,
+          selectedPrintOption: selectedPrintOption,
+          printAreaPreset: printAreaSize,
+          frontCanvasJson: frontJson ? JSON.stringify(frontJson) : null,
+          backCanvasJson: backJson ? JSON.stringify(backJson) : null,
+          frontThumbnailUrl: frontThumb,
+          backThumbnailUrl: backThumb,
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Design saved to My Library!');
+        setIsPreviewModalOpen(false);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save design');
+      }
+    } catch (error) {
+      console.error('Save to library error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save design');
     }
   };
 
@@ -2139,7 +2134,6 @@ export function CustomDesignPage() {
     { id: 'back', icon: ArrowLeft, label: 'Back' },
     { id: 'upload', icon: Upload, label: 'Upload Image' },
     { id: 'text', icon: Type, label: 'Add Text' },
-    { id: 'library', icon: Layers, label: 'My Library' },
     { id: 'graphics', icon: ImageIcon, label: 'Graphics' },
     { id: 'patterns', icon: Grid3x3, label: 'Patterns/Textures' },
   ];
@@ -2150,7 +2144,6 @@ export function CustomDesignPage() {
     } else if (toolId === 'upload') {
       setIsUploadPanelOpen(!isUploadPanelOpen);
       setIsTextPanelOpen(false);
-      setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
       setIsPatternsPanelOpen(false);
       setIsClothingPanelOpen(false);
@@ -2159,26 +2152,15 @@ export function CustomDesignPage() {
     } else if (toolId === 'text') {
       setIsTextPanelOpen(!isTextPanelOpen);
       setIsUploadPanelOpen(false);
-      setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
       setIsPatternsPanelOpen(false);
       setIsClothingPanelOpen(false);
       setIsPropertiesPanelOpen(false);
       setActiveTool('text');
-    } else if (toolId === 'library') {
-      setIsLibraryPanelOpen(!isLibraryPanelOpen);
-      setIsUploadPanelOpen(false);
-      setIsTextPanelOpen(false);
-      setIsGraphicsPanelOpen(false);
-      setIsPatternsPanelOpen(false);
-      setIsClothingPanelOpen(false);
-      setIsPropertiesPanelOpen(false);
-      setActiveTool('library');
     } else if (toolId === 'graphics') {
       setIsGraphicsPanelOpen(!isGraphicsPanelOpen);
       setIsUploadPanelOpen(false);
       setIsTextPanelOpen(false);
-      setIsLibraryPanelOpen(false);
       setIsPatternsPanelOpen(false);
       setIsClothingPanelOpen(false);
       setIsPropertiesPanelOpen(false);
@@ -2187,7 +2169,6 @@ export function CustomDesignPage() {
       setIsPatternsPanelOpen(!isPatternsPanelOpen);
       setIsUploadPanelOpen(false);
       setIsTextPanelOpen(false);
-      setIsLibraryPanelOpen(false);
       setIsGraphicsPanelOpen(false);
       setIsClothingPanelOpen(false);
       setIsPropertiesPanelOpen(false);
@@ -2349,12 +2330,38 @@ export function CustomDesignPage() {
   const handleObjectUpdate = (updates: Record<string, any>) => {
     const canvas = fabricCanvas.canvasRef;
     const selectedObj = fabricCanvas.selectedObject;
-    
+
     if (!canvas || !selectedObj) return;
 
     selectedObj.set(updates);
     canvas.renderAll();
   };
+
+  // CRITICAL: Redirect to home if not logged in (after all hooks)
+  useEffect(() => {
+    if (!isHydrating && !user) {
+      console.log('🚫 User not authenticated, redirecting to home page');
+      toast.error('Please log in to access the design editor', { duration: 3000 });
+      navigate('/', { replace: true });
+    }
+  }, [user, isHydrating, navigate]);
+
+  // Show loading state while checking authentication
+  if (isHydrating) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render the page if not authenticated
+  if (!user) {
+    return null;
+  }
 
   return (
     <CanvasProvider value={{
@@ -2373,11 +2380,6 @@ export function CustomDesignPage() {
       resetView: fabricCanvas.resetView,
       exportHighDPI: fabricCanvas.exportHighDPI,
     }}>
-      {/* Loading overlay when design is loading */}
-      {designStatus.type === 'loading' && (
-        <LoadingOverlay message={designStatus.message || 'Loading your design...'} />
-      )}
-      
       <div className="h-screen flex bg-gray-100 overflow-hidden fixed inset-0">
       {/* Left Vertical Toolbar - Spans full height */}
       <div className="bg-white border-r w-20 flex flex-col items-center py-6 gap-4 z-10">
@@ -2418,7 +2420,6 @@ export function CustomDesignPage() {
                 if (!isClothingPanelOpen) {
                   setIsUploadPanelOpen(false);
                   setIsTextPanelOpen(false);
-                  setIsLibraryPanelOpen(false);
                   setIsGraphicsPanelOpen(false);
                   setIsPatternsPanelOpen(false);
                 }
@@ -2446,7 +2447,6 @@ export function CustomDesignPage() {
                 if (!isPropertiesPanelOpen) {
                   setIsUploadPanelOpen(false);
                   setIsTextPanelOpen(false);
-                  setIsLibraryPanelOpen(false);
                   setIsGraphicsPanelOpen(false);
                   setIsPatternsPanelOpen(false);
                 }
@@ -3135,98 +3135,6 @@ export function CustomDesignPage() {
             </div>
           )}
 
-          {/* My Library Panel - LEFT SIDE */}
-          {isLibraryPanelOpen && (
-            <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[580px] overflow-hidden z-20 shadow-xl">
-              <div className="h-full flex flex-col">
-                <div className="p-5 border-b border-gray-200 bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-xl">My Library</h2>
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className={`size-2 rounded-full ${savedDesigns.length > 0 ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                        <span className="text-gray-600">{savedDesigns.length} Saved</span>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="icon" className="size-8 hover:bg-gray-200" onClick={() => setIsLibraryPanelOpen(false)}>
-                      <X className="size-5" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-5 min-h-0">
-                  <div className="h-full space-y-6">
-                    {/* Saved Designs Section */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-gray-700">📁 Saved Designs</h3>
-                        {savedDesigns.length > 0 && (
-                          <span className="text-xs text-gray-500">{savedDesigns.length} design{savedDesigns.length !== 1 ? 's' : ''}</span>
-                        )}
-                      </div>
-                      
-                      {isLoadingDesigns ? (
-                        <div className="flex items-center justify-center py-12">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                        </div>
-                      ) : savedDesigns.length === 0 ? (
-                        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                          <Layers className="size-16 mx-auto mb-3 opacity-30 text-gray-400" />
-                          <p className="text-gray-600 font-medium">No saved designs yet</p>
-                          <p className="text-xs text-gray-500 mt-1">Preview your design and click "Save to Library" to save it here</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-4">
-                          {savedDesigns.map((design) => (
-                            <DesignCard
-                              key={design.id}
-                              design={design}
-                              onLoad={handleLoadDesign}
-                              onDelete={handleDeleteDesign}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-t border-gray-200"></div>
-
-                    {/* Templates Section - Coming Soon */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-gray-700">🎨 Templates</h3>
-                        <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        {[1, 2, 3, 4].map((item) => (
-                          <div 
-                            key={item} 
-                            className="aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 overflow-hidden relative group cursor-not-allowed"
-                          >
-                            <div className="size-full flex flex-col items-center justify-center p-4 opacity-40">
-                              <Package className="size-12 text-gray-400 mb-2" />
-                              <p className="text-xs text-gray-600 text-center">Template {item}</p>
-                            </div>
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <Badge variant="secondary" className="text-xs">Available Soon</Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                        <p className="font-medium mb-1">✨ Templates Coming in Phase 4</p>
-                        <p className="text-xs">Pre-designed templates will help you create amazing designs faster!</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Graphics Panel - LEFT SIDE */}
           {isGraphicsPanelOpen && (
             <div className="absolute left-0 top-0 bottom-0 bg-white border-r border-gray-300 w-[480px] overflow-hidden z-20 shadow-xl">
@@ -3640,16 +3548,74 @@ export function CustomDesignPage() {
                 >
                   Design Area - {PRINT_AREA_PRESETS[printAreaSize].label}
                 </div>
-                
-                {/* Fabric.js Canvas - positioned inside design area */}
-                <canvas 
-                  id="design-canvas" 
-                  className="absolute inset-0"
+
+                {/* Mockup Background Layer */}
+                {activeVariant && (
+                  <div
+                    className="absolute inset-0 pointer-events-none flex items-center justify-center"
+                    style={{ zIndex: 0 }}
+                  >
+                    <img
+                      src={getMockupImageUrl(selectedView) || ''}
+                      alt={`${activeVariant.productName} ${selectedView}`}
+                      className="w-full h-full object-contain"
+                      style={{
+                        opacity: 0.25,  // Subtle background
+                        mixBlendMode: 'multiply',
+                      }}
+                      onLoad={(e) => {
+                        console.log('Mockup image loaded successfully:', e.currentTarget.src);
+                      }}
+                      onError={(e) => {
+                        console.error('Failed to load mockup image:', {
+                          src: e.currentTarget.src,
+                          view: selectedView,
+                          variant: activeVariant
+                        });
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Fabric.js Canvases - positioned inside design area */}
+                {/* Each canvas in its own container to prevent DOM conflicts */}
+                <div
+                  key="front-canvas-container"
+                  className={`absolute inset-0 ${selectedView === 'front' ? 'block' : 'hidden'}`}
                   style={{
-                    width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
-                    height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
+                    pointerEvents: selectedView === 'front' ? 'auto' : 'none',
+                    zIndex: 10, // Above mockup background
                   }}
-                />
+                >
+                  <canvas
+                    key="front-canvas"
+                    id="front-canvas"
+                    className="absolute inset-0"
+                    style={{
+                      width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
+                      height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
+                    }}
+                  />
+                </div>
+
+                <div
+                  key="back-canvas-container"
+                  className={`absolute inset-0 ${selectedView === 'back' ? 'block' : 'hidden'}`}
+                  style={{
+                    pointerEvents: selectedView === 'back' ? 'auto' : 'none',
+                    zIndex: 10, // Above mockup background
+                  }}
+                >
+                  <canvas
+                    key="back-canvas"
+                    id="back-canvas"
+                    className="absolute inset-0"
+                    style={{
+                      width: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].width * (DEFAULT_ZOOM / 100))}px`,
+                      height: `${Math.round(PRINT_AREA_PRESETS[printAreaSize].height * (DEFAULT_ZOOM / 100))}px`,
+                    }}
+                  />
+                </div>
               </div>
             </div>
             </div>
@@ -3719,34 +3685,6 @@ export function CustomDesignPage() {
               <Eye className="size-4 mr-1.5" />
               Preview
             </Button>
-            
-            {/* Auto-save Status Indicator */}
-            {(designStatus.type === 'saving' || designStatus.type === 'saved' || designStatus.type === 'save-error') && (
-              <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
-                designStatus.type === 'saving' ? 'bg-blue-50 text-blue-700' :
-                designStatus.type === 'saved' ? 'bg-green-50 text-green-700' :
-                'bg-red-50 text-red-700'
-              }`}>
-                {designStatus.type === 'saving' && (
-                  <>
-                    <div className="size-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin"></div>
-                    <span>Auto-saving...</span>
-                  </>
-                )}
-                {designStatus.type === 'saved' && (
-                  <>
-                    <Check className="size-3" />
-                    <span>Auto-saved</span>
-                  </>
-                )}
-                {designStatus.type === 'save-error' && (
-                  <>
-                    <AlertCircle className="size-3" />
-                    <span>Failed</span>
-                  </>
-                )}
-              </div>
-            )}
             
             <div className="w-px h-6 bg-gray-300 mx-1"></div>
             
@@ -3919,6 +3857,14 @@ export function CustomDesignPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* User Status Indicator */}
+            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+              <div className="size-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium text-green-700">
+                {user?.name || user?.email || 'Logged in'}
+              </span>
+            </div>
+
             {/* Size Selector */}
             {activeVariant && (
               <Select value={selectedSize} onValueChange={setSelectedSize}>
@@ -3940,30 +3886,52 @@ export function CustomDesignPage() {
                 </SelectContent>
               </Select>
             )}
-            
-            {/* Add to Cart Button */}
-            <Button 
-              size="sm" 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={handleAddToCart}
-              disabled={!activeVariant || !selectedSize || isAddingToCart}
-            >
-              {isAddingToCart ? (
+
+            {/* Auto-Save Status Bar */}
+            <div className="flex items-center gap-3 px-4 py-2 bg-white border rounded-lg shadow-sm">
+              {isSaving ? (
                 <>
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                  Adding...
+                  <Loader2 className="size-4 animate-spin text-blue-600" />
+                  <span className="text-sm text-gray-700">Saving draft...</span>
+                </>
+              ) : lastSaved ? (
+                <>
+                  <CheckCircle2 className="size-4 text-green-600" />
+                  <span className="text-sm text-gray-700">
+                    Auto-saved <span className="text-gray-500">{formatTimeAgo(lastSaved)}</span>
+                  </span>
+                </>
+              ) : hasUnsavedChanges ? (
+                <>
+                  <Circle className="size-4 text-orange-500 fill-current" />
+                  <span className="text-sm text-gray-700">Unsaved changes</span>
                 </>
               ) : (
                 <>
-                  <ShoppingCart className="size-4 mr-2" />
-                  Add to Cart
+                  <CheckCircle2 className="size-4 text-gray-400" />
+                  <span className="text-sm text-gray-500">All changes saved</span>
                 </>
               )}
-            </Button>
+            </div>
           </div>
         </div>
       </div>
       </div>
+
+      {/* Preview Modal */}
+      <PreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        frontCanvas={frontCanvas.canvasRef}
+        backCanvas={backCanvas.canvasRef}
+        activeView={selectedView}
+        variant={activeVariant}
+        selectedSize={selectedSize}
+        printAreaSize={printAreaSize}
+        onAddToCart={handleAddToCart}
+        onSaveToLibrary={handleSaveToLibrary}
+        getMockupImageUrl={getMockupImageUrl}
+      />
     </CanvasProvider>
   );
 }

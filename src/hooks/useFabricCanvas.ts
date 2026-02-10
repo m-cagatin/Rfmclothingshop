@@ -10,6 +10,7 @@ import {
   PRINT_HEIGHT,
   SCALE_FACTOR,
 } from '../utils/fabricHelpers';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface UseFabricCanvasOptions {
   onObjectAdded?: (obj: FabricObject) => void;
@@ -19,10 +20,20 @@ export interface UseFabricCanvasOptions {
   onSelectionCleared?: () => void;
   canvasWidth?: number;
   canvasHeight?: number;
+  initDelay?: number; // Delay in ms before initializing (to stagger multiple canvases)
+}
+
+// Extended Fabric object with custom properties for tracking
+export interface TrackedFabricObject extends FabricObject {
+  id?: string;
+  view?: 'front' | 'back';
+  createdAt?: number;
+  modifiedAt?: number;
 }
 
 export function useFabricCanvas(
   canvasId: string,
+  view: 'front' | 'back', // NEW: Identify which canvas this is
   options: UseFabricCanvasOptions = {}
 ) {
   const canvasRef = useRef<Canvas | null>(null);
@@ -30,74 +41,154 @@ export function useFabricCanvas(
   const [canvasObjects, setCanvasObjects] = useState<FabricObject[]>([]);
   const [zoom, setZoomLevel] = useState(1);
 
+  // Helper function to attach tracking metadata to objects
+  const attachObjectMetadata = useCallback((obj: FabricObject) => {
+    const trackedObj = obj as TrackedFabricObject;
+
+    // Only add metadata if it doesn't already exist (for loaded objects)
+    if (!trackedObj.id) {
+      trackedObj.id = uuidv4();
+      trackedObj.view = view;
+      trackedObj.createdAt = Date.now();
+      trackedObj.modifiedAt = Date.now();
+    }
+
+    return trackedObj;
+  }, [view]);
+
+  // Update modified timestamp
+  const updateObjectTimestamp = useCallback((obj: FabricObject) => {
+    const trackedObj = obj as TrackedFabricObject;
+    trackedObj.modifiedAt = Date.now();
+  }, []);
+
   // Initialize canvas
   useEffect(() => {
-    const canvasElement = document.getElementById(canvasId) as HTMLCanvasElement;
-    if (!canvasElement) return;
+    let attempts = 0;
+    const maxAttempts = 20; // Try for 4 seconds (20 * 200ms)
+    let retryTimer: number | null = null;
 
-    const canvas = new Canvas(canvasId, {
-      width: options.canvasWidth || UI_CANVAS_WIDTH,
-      height: options.canvasHeight || UI_CANVAS_HEIGHT,
-      backgroundColor: 'transparent',
-      selection: true,
-      preserveObjectStacking: true,
-      enableRetinaScaling: false, // Prevent automatic scaling
-      // Keep controls crisp at any zoom level
-      controlsAboveOverlay: true,
-    });
-
-    canvasRef.current = canvas;
-
-    // Event handlers
-    canvas.on('object:added', (e) => {
-      if (e.target) {
-        options.onObjectAdded?.(e.target);
-        updateCanvasObjects();
+    const initCanvas = () => {
+      attempts++;
+      
+      const canvasElement = document.getElementById(canvasId) as HTMLCanvasElement;
+      
+      if (!canvasElement) {
+        if (attempts < maxAttempts) {
+          // Retry after a short delay
+          retryTimer = window.setTimeout(initCanvas, 200);
+          if (attempts % 5 === 0) { // Log every 1 second
+            console.log(`Retrying canvas initialization for ${canvasId}... (attempt ${attempts})`);
+          }
+          return;
+        } else {
+          console.error(`Canvas element ${canvasId} not found in DOM after ${maxAttempts} attempts`);
+          return;
+        }
       }
-    });
 
-    canvas.on('object:removed', (e) => {
-      if (e.target) {
-        options.onObjectRemoved?.(e.target);
-        updateCanvasObjects();
+      // Check if element is properly attached to DOM
+      if (!canvasElement.parentElement) {
+        if (attempts < maxAttempts) {
+          retryTimer = window.setTimeout(initCanvas, 200);
+          return;
+        }
+        console.warn(`Canvas element ${canvasId} has no parent after ${maxAttempts} attempts`);
+        return;
       }
-    });
 
-    canvas.on('object:modified', (e) => {
-      if (e.target) {
-        enforceCanvasBounds(e.target, canvas);
-        options.onObjectModified?.(e.target);
-        canvas.renderAll();
+      // Avoid double initialization
+      if (canvasRef.current) {
+        console.log(`Canvas ${canvasId} already initialized`);
+        return;
       }
-    });
 
-    canvas.on('object:moving', (e) => {
-      if (e.target) {
-        enforceCanvasBounds(e.target, canvas);
-      }
-    });
+      console.log(`✅ Initializing canvas: ${canvasId} (attempt ${attempts})`);
 
-    canvas.on('selection:created', (e) => {
-      const obj = e.selected?.[0] || null;
-      setSelectedObject(obj);
-      options.onSelectionCreated?.(obj);
-    });
+      const canvas = new Canvas(canvasId, {
+        width: options.canvasWidth || UI_CANVAS_WIDTH,
+        height: options.canvasHeight || UI_CANVAS_HEIGHT,
+        backgroundColor: 'transparent',
+        selection: true,
+        preserveObjectStacking: true,
+        enableRetinaScaling: false, // Prevent automatic scaling
+        // Keep controls crisp at any zoom level
+        controlsAboveOverlay: true,
+      });
 
-    canvas.on('selection:updated', (e) => {
-      const obj = e.selected?.[0] || null;
-      setSelectedObject(obj);
-      options.onSelectionCreated?.(obj);
-    });
+      canvasRef.current = canvas;
 
-    canvas.on('selection:cleared', () => {
-      setSelectedObject(null);
-      options.onSelectionCleared?.();
-    });
+      // Event handlers
+      canvas.on('object:added', (e) => {
+        if (e.target) {
+          // Attach metadata to new objects
+          attachObjectMetadata(e.target);
+          options.onObjectAdded?.(e.target);
+          updateCanvasObjects();
+        }
+      });
+
+      canvas.on('object:removed', (e) => {
+        if (e.target) {
+          options.onObjectRemoved?.(e.target);
+          updateCanvasObjects();
+        }
+      });
+
+      canvas.on('object:modified', (e) => {
+        if (e.target) {
+          // Update timestamp on modification
+          updateObjectTimestamp(e.target);
+          enforceCanvasBounds(e.target, canvas);
+          options.onObjectModified?.(e.target);
+          canvas.renderAll();
+        }
+      });
+
+      canvas.on('object:moving', (e) => {
+        if (e.target) {
+          enforceCanvasBounds(e.target, canvas);
+        }
+      });
+
+      canvas.on('selection:created', (e) => {
+        const obj = e.selected?.[0] || null;
+        setSelectedObject(obj);
+        options.onSelectionCreated?.(obj);
+      });
+
+      canvas.on('selection:updated', (e) => {
+        const obj = e.selected?.[0] || null;
+        setSelectedObject(obj);
+        options.onSelectionCreated?.(obj);
+      });
+
+      canvas.on('selection:cleared', () => {
+        setSelectedObject(null);
+        options.onSelectionCleared?.();
+      });
+    };
+
+    // Defer initialization to next frame for proper DOM attachment
+    // If initDelay is specified, add additional delay to stagger multiple canvas initializations
+    const delay = options.initDelay || 0;
+
+    const timeoutId = setTimeout(() => {
+      requestAnimationFrame(() => {
+        initCanvas();
+      });
+    }, delay);
 
     return () => {
-      canvas.dispose();
+      clearTimeout(timeoutId);
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+      }
+      if (canvasRef.current) {
+        canvasRef.current.dispose();
+      }
     };
-  }, [canvasId]); // Only recreate when canvasId changes
+  }, [canvasId, options.initDelay]); // Only re-initialize if canvasId or delay changes
 
   // Update canvas dimensions when they change WITHOUT recreating the canvas
   useEffect(() => {

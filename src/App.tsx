@@ -8,7 +8,6 @@ import AccountPage from "./pages/AccountPage";
 import { CustomDesignPage } from "./pages/CustomDesignPage";
 import { CustomProductsPage } from "./pages/CustomProductsPage";
 import { CustomProductDetailsPage } from "./pages/CustomProductDetailsPage";
-import { CustomDesignPreviewPage } from "./pages/CustomDesignPreviewPage";
 import { ProductDetailsPage } from "./pages/ProductDetailsPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { OrderConfirmationPage } from "./pages/OrderConfirmationPage";
@@ -114,7 +113,6 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
   // Hide header on Custom Design page
   const showHeader =
     location.pathname !== "/custom-design" &&
-    location.pathname !== "/custom-design-preview" &&
     !location.pathname.startsWith("/admin");
 
   const handleAddToCart = async (productId: string, quantity: number = 1, size?: string, color?: string) => {
@@ -287,9 +285,8 @@ function AppContentInner({ isAuthOpen, setIsAuthOpen }: { isAuthOpen: boolean; s
                 >
                   <CustomDesignPage />
                 </ErrorBoundary>
-              } 
+              }
             />
-            <Route path="/custom-design-preview" element={<CustomDesignPreviewPage />} />
             <Route path="/custom-products" element={<CustomProductsPage />} />
             <Route path="/custom-product/:id" element={<CustomProductDetailsPage />} />
             <Route 

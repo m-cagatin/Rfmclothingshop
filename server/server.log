@@ -1,0 +1,58 @@
+
+> rfm-auth-server@0.1.0 dev
+> ts-node-dev --respawn --transpile-only src/index.ts
+
+[INFO] 08:44:22 ts-node-dev ver. 2.0.0 (using ts-node ver. 10.9.2, typescript ver. 5.9.3)
+❌ Server error: Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Function.listen (C:\xampp\htdocs\Rfmclothingshop\server\node_modules\express\lib\application.js:635:24)
+    at Object.<anonymous> (C:\xampp\htdocs\Rfmclothingshop\server\src\index.ts:55:5)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1554:14)
+    at Module._compile (C:\xampp\htdocs\Rfmclothingshop\server\node_modules\source-map-support\source-map-support.js:568:25)
+    at Module.m._compile (C:\Users\cmarc\AppData\Local\Temp\ts-node-dev-hook-6701657427581988.js:69:33)
+    at node:internal/modules/cjs/loader:1706:10
+    at require.extensions..jsx.require.extensions..js (C:\Users\cmarc\AppData\Local\Temp\ts-node-dev-hook-6701657427581988.js:114:20) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 4000
+}
+[INFO] 09:46:48 Restarting: C:\xampp\htdocs\Rfmclothingshop\server\src\services\design.service.ts has been modified
+❌ Server error: Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Function.listen (C:\xampp\htdocs\Rfmclothingshop\server\node_modules\express\lib\application.js:635:24)
+    at Object.<anonymous> (C:\xampp\htdocs\Rfmclothingshop\server\src\index.ts:55:5)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1554:14)
+    at Module._compile (C:\xampp\htdocs\Rfmclothingshop\server\node_modules\source-map-support\source-map-support.js:568:25)
+    at Module.m._compile (C:\Users\cmarc\AppData\Local\Temp\ts-node-dev-hook-6701657427581988.js:69:33)
+    at node:internal/modules/cjs/loader:1706:10
+    at require.extensions..jsx.require.extensions..js (C:\Users\cmarc\AppData\Local\Temp\ts-node-dev-hook-6701657427581988.js:114:20) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 4000
+}
+[INFO] 00:21:31 Restarting: C:\xampp\htdocs\Rfmclothingshop\server\src\services\design.service.ts has been modified
+❌ Server error: Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Function.listen (C:\xampp\htdocs\Rfmclothingshop\server\node_modules\express\lib\application.js:635:24)
+    at Object.<anonymous> (C:\xampp\htdocs\Rfmclothingshop\server\src\index.ts:55:5)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1554:14)
+    at Module._compile (C:\xampp\htdocs\Rfmclothingshop\server\node_modules\source-map-support\source-map-support.js:568:25)
+    at Module.m._compile (C:\Users\cmarc\AppData\Local\Temp\ts-node-dev-hook-6701657427581988.js:69:33)
+    at node:internal/modules/cjs/loader:1706:10
+    at require.extensions..jsx.require.extensions..js (C:\Users\cmarc\AppData\Local\Temp\ts-node-dev-hook-6701657427581988.js:114:20) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 4000
+}
