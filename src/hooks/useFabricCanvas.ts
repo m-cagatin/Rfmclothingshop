@@ -64,17 +64,36 @@ export function useFabricCanvas(
 
   // Initialize canvas
   useEffect(() => {
-    // Use requestAnimationFrame to ensure DOM is ready
+    let attempts = 0;
+    const maxAttempts = 20; // Try for 4 seconds (20 * 200ms)
+    let retryTimer: number | null = null;
+
     const initCanvas = () => {
+      attempts++;
+      
       const canvasElement = document.getElementById(canvasId) as HTMLCanvasElement;
+      
       if (!canvasElement) {
-        console.warn(`Canvas element ${canvasId} not found in DOM`);
-        return;
+        if (attempts < maxAttempts) {
+          // Retry after a short delay
+          retryTimer = window.setTimeout(initCanvas, 200);
+          if (attempts % 5 === 0) { // Log every 1 second
+            console.log(`Retrying canvas initialization for ${canvasId}... (attempt ${attempts})`);
+          }
+          return;
+        } else {
+          console.error(`Canvas element ${canvasId} not found in DOM after ${maxAttempts} attempts`);
+          return;
+        }
       }
 
       // Check if element is properly attached to DOM
       if (!canvasElement.parentElement) {
-        console.warn(`Canvas element ${canvasId} has no parent`);
+        if (attempts < maxAttempts) {
+          retryTimer = window.setTimeout(initCanvas, 200);
+          return;
+        }
+        console.warn(`Canvas element ${canvasId} has no parent after ${maxAttempts} attempts`);
         return;
       }
 
@@ -84,7 +103,7 @@ export function useFabricCanvas(
         return;
       }
 
-      console.log(`Initializing canvas: ${canvasId}`);
+      console.log(`✅ Initializing canvas: ${canvasId} (attempt ${attempts})`);
 
       const canvas = new Canvas(canvasId, {
         width: options.canvasWidth || UI_CANVAS_WIDTH,
@@ -162,6 +181,9 @@ export function useFabricCanvas(
 
     return () => {
       clearTimeout(timeoutId);
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+      }
       if (canvasRef.current) {
         canvasRef.current.dispose();
       }

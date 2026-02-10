@@ -18,9 +18,11 @@ interface Variant {
   totalPrice: number;
   category?: string;
   images?: Array<{
-    id: number;
+    id?: number;
     url: string;
+    publicId: string;
     type: 'front' | 'back' | 'additional';
+    displayOrder: number;
   }>;
 }
 
