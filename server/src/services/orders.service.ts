@@ -41,18 +41,128 @@ const statusMessages: Record<string, { message: string; location?: string }> = {
   cancelled: { message: 'Order has been cancelled' },
 };
 
+/** Helper to map a Prisma order (with includes) to an API response object */
+function mapOrderToResponse(order: any) {
+  return {
+    id: order.order_ref,
+    orderId: order.order_id,
+    customer: {
+      name: order.customer_name,
+      email: order.customer_email,
+      phone: order.customer_phone || '',
+      address: order.customer_address || '',
+    },
+    items: order.order_items.map((item: any) => {
+      let imageUrl = null;
+      try {
+        if (item.image_url) {
+          imageUrl = item.image_url;
+        } else if (item.catalog_clothing?.product_images && item.catalog_clothing.product_images.length > 0) {
+          imageUrl = item.catalog_clothing.product_images[0].image_url;
+        }
+      } catch (error) {
+        console.error(`Failed to get image for product ${item.product_id}:`, error);
+      }
+      return {
+        id: item.item_id.toString(),
+        productId: item.product_id,
+        name: item.product_name,
+        quantity: item.quantity,
+        unitPrice: Number(item.unit_price),
+        subtotal: Number(item.subtotal),
+        image: imageUrl,
+      };
+    }),
+    total: Number(order.total_amount),
+    balanceRemaining: Number(order.balance_remaining || 0),
+    status: order.status || 'payment_pending',
+    orderDate: order.order_date,
+    estimatedCompletion: order.estimated_completion,
+    notes: order.notes,
+    payment: order.payments_payments_order_idToorders?.[0] ? {
+      id: order.payments_payments_order_idToorders[0].payment_id,
+      method: order.payments_payments_order_idToorders[0].payment_method,
+      status: order.payments_payments_order_idToorders[0].payment_status,
+      type: order.payments_payments_order_idToorders[0].payment_type,
+      amountPaid: Number(order.payments_payments_order_idToorders[0].amount_paid || order.payments_payments_order_idToorders[0].amount),
+      amount: Number(order.payments_payments_order_idToorders[0].amount),
+      remainingBalance: Number(order.payments_payments_order_idToorders[0].remaining_balance || 0),
+      referenceNumber: order.payments_payments_order_idToorders[0].reference_number,
+      createdAt: order.payments_payments_order_idToorders[0].created_at,
+      verifiedAt: order.payments_payments_order_idToorders[0].verified_at,
+      paidAt: order.payments_payments_order_idToorders[0].paid_at,
+    } : null,
+    trackingEvents: order.tracking_events?.map((event: any) => ({
+      id: event.id,
+      status: event.status,
+      message: event.message,
+      location: event.location,
+      timestamp: event.timestamp,
+    })) || [],
+    shipping: {
+      trackingNumber: order.tracking_number || null,
+      carrier: order.carrier || null,
+      shippedDate: order.shipped_date || null,
+      estimatedDelivery: order.estimated_delivery || null,
+    },
+  };
+}
+
+/**
+ * Get all orders for a specific user by user_id
+ */
+export async function getOrdersByUserId(userId: string) {
+  try {
+    const orders = await prisma.orders.findMany({
+      where: { user_id: userId },
+      include: {
+        order_items: {
+          include: {
+            catalog_clothing: {
+              include: {
+                product_images: {
+                  orderBy: { display_order: 'asc' },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+        tracking_events: {
+          orderBy: { timestamp: 'desc' },
+        },
+        payments_payments_order_idToorders: {
+          orderBy: { created_at: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return orders.map((order) => mapOrderToResponse(order));
+  } catch (error: any) {
+    console.error('Error in getOrdersByUserId:', error);
+    throw error;
+  }
+}
+
 /**
  * Get all orders with optional status filter
  */
 export async function getAllOrders(filters?: {
   status?: string;
   customerEmail?: string;
+  userId?: string;
 }) {
   try {
     const where: any = {};
 
     if (filters?.status) {
       where.status = filters.status;
+    }
+
+    if (filters?.userId) {
+      where.user_id = filters.userId;
     }
 
     if (filters?.customerEmail) {
@@ -95,76 +205,7 @@ export async function getAllOrders(filters?: {
       },
     });
 
-  return orders.map((order) => ({
-    id: order.order_ref,
-    orderId: order.order_id,
-    customer: {
-      name: order.customer_name,
-      email: order.customer_email,
-      phone: order.customer_phone || '',
-      address: order.customer_address || '',
-    },
-    items: order.order_items.map((item) => {
-      // Try to get image from multiple sources:
-      // 1. First check if image_url is stored in order_items (new field)
-      // 2. Then check product_images relation
-      let imageUrl = null;
-      try {
-        // Check if image_url is stored directly in order_items
-        if ((item as any).image_url) {
-          imageUrl = (item as any).image_url;
-        } 
-        // Fallback to product_images relation
-        else if (item.catalog_clothing?.product_images && item.catalog_clothing.product_images.length > 0) {
-          imageUrl = item.catalog_clothing.product_images[0].image_url;
-        }
-      } catch (error) {
-        console.error(`❌ Failed to get image for product ${item.product_id}:`, error);
-      }
-      
-      return {
-        id: item.item_id.toString(),
-        productId: item.product_id,
-        name: item.product_name,
-        quantity: item.quantity,
-        unitPrice: Number(item.unit_price),
-        subtotal: Number(item.subtotal),
-        image: imageUrl,
-      };
-    }),
-    total: Number(order.total_amount),
-    balanceRemaining: Number(order.balance_remaining || 0),
-    status: order.status || 'payment_pending',
-    orderDate: order.order_date,
-    estimatedCompletion: order.estimated_completion,
-    notes: order.notes,
-    payment: order.payments_payments_order_idToorders[0] ? {
-      id: order.payments_payments_order_idToorders[0].payment_id,
-      method: order.payments_payments_order_idToorders[0].payment_method,
-      status: order.payments_payments_order_idToorders[0].payment_status,
-      type: order.payments_payments_order_idToorders[0].payment_type,
-      amountPaid: Number(order.payments_payments_order_idToorders[0].amount_paid || order.payments_payments_order_idToorders[0].amount),
-      amount: Number(order.payments_payments_order_idToorders[0].amount),
-      remainingBalance: Number(order.payments_payments_order_idToorders[0].remaining_balance || 0),
-      referenceNumber: order.payments_payments_order_idToorders[0].reference_number,
-      createdAt: order.payments_payments_order_idToorders[0].created_at,
-      verifiedAt: order.payments_payments_order_idToorders[0].verified_at,
-      paidAt: order.payments_payments_order_idToorders[0].paid_at,
-    } : null,
-    trackingEvents: order.tracking_events.map((event) => ({
-      id: event.id,
-      status: event.status,
-      message: event.message,
-      location: event.location,
-      timestamp: event.timestamp,
-    })),
-    shipping: {
-      trackingNumber: (order as any).tracking_number || null,
-      carrier: (order as any).carrier || null,
-      shippedDate: (order as any).shipped_date || null,
-      estimatedDelivery: (order as any).estimated_delivery || null,
-    },
-  }));
+  return orders.map((order) => mapOrderToResponse(order));
   } catch (error: any) {
     console.error('Error in getAllOrders:', error);
     console.error('Error message:', error.message);
@@ -211,81 +252,7 @@ export async function getOrderByRef(orderRef: string) {
     return null;
   }
 
-  // Get latest payment (most recent)
-  const latestPayment = order.payments_payments_order_idToorders.length > 0
-    ? order.payments_payments_order_idToorders[0]
-    : null;
-
-  return {
-    id: order.order_ref,
-    orderId: order.order_id,
-    customer: {
-      name: order.customer_name,
-      email: order.customer_email,
-      phone: order.customer_phone || '',
-      address: order.customer_address || '',
-    },
-    items: order.order_items.map((item) => {
-      // Try to get image from multiple sources:
-      // 1. First check if image_url is stored in order_items (new field)
-      // 2. Then check product_images relation
-      let imageUrl = null;
-      try {
-        // Check if image_url is stored directly in order_items
-        if ((item as any).image_url) {
-          imageUrl = (item as any).image_url;
-        } 
-        // Fallback to product_images relation
-        else if (item.catalog_clothing?.product_images && item.catalog_clothing.product_images.length > 0) {
-          imageUrl = item.catalog_clothing.product_images[0].image_url;
-        }
-      } catch (error) {
-        console.error(`❌ Failed to get image for product ${item.product_id}:`, error);
-      }
-      
-      return {
-        id: item.item_id.toString(),
-        productId: item.product_id,
-        name: item.product_name,
-        quantity: item.quantity,
-        unitPrice: Number(item.unit_price),
-        subtotal: Number(item.subtotal),
-        image: imageUrl,
-      };
-    }),
-    total: Number(order.total_amount),
-    balanceRemaining: Number(order.balance_remaining || 0),
-    status: order.status || 'payment_pending',
-    orderDate: order.order_date,
-    estimatedCompletion: order.estimated_completion,
-    notes: order.notes,
-    trackingEvents: order.tracking_events.map((event) => ({
-      id: event.id,
-      status: event.status,
-      message: event.message,
-      location: event.location,
-      timestamp: event.timestamp,
-    })),
-    shipping: {
-      trackingNumber: (order as any).tracking_number || null,
-      carrier: (order as any).carrier || null,
-      shippedDate: (order as any).shipped_date || null,
-      estimatedDelivery: (order as any).estimated_delivery || null,
-    },
-    payment: latestPayment ? {
-      id: latestPayment.payment_id,
-      method: latestPayment.payment_method,
-      status: latestPayment.payment_status,
-      type: latestPayment.payment_type,
-      amountPaid: Number(latestPayment.amount_paid || latestPayment.amount),
-      amount: Number(latestPayment.amount),
-      remainingBalance: Number(latestPayment.remaining_balance || 0),
-      referenceNumber: latestPayment.reference_number,
-      createdAt: latestPayment.created_at,
-      verifiedAt: latestPayment.verified_at,
-      paidAt: latestPayment.paid_at,
-    } : null,
-  };
+  return mapOrderToResponse(order);
 }
 
 /**

@@ -18,32 +18,103 @@ function getCurrentUserId(req: Request): string | null {
   }
 }
 
+/** Check if current user is admin */
+async function isAdmin(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  return user?.role === 'admin';
+}
+
+/**
+ * GET /api/orders/my-orders
+ * Get all orders for the currently logged-in user (by user_id).
+ * Must come BEFORE /:orderRef to avoid route conflicts.
+ */
+router.get('/my-orders', async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'You must be logged in to view your orders' });
+    }
+
+    const orders = await ordersService.getOrdersByUserId(userId);
+    res.json(orders);
+  } catch (error: any) {
+    console.error('Error fetching user orders:', error);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+/**
+ * GET /api/orders/my-orders/count
+ * Get count of active (non-delivered, non-cancelled) orders for the logged-in user.
+ * Used for the badge indicator in the header.
+ */
+router.get('/my-orders/count', async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const count = await prisma.orders.count({
+      where: {
+        user_id: userId,
+        status: {
+          notIn: ['delivered', 'cancelled'],
+        },
+      },
+    });
+
+    res.json({ count });
+  } catch (error: any) {
+    console.error('Error fetching order count:', error);
+    res.status(500).json({ error: 'Failed to fetch order count' });
+  }
+});
+
 /**
  * GET /api/orders
- * Get all orders with optional filters.
+ * Get all orders with optional filters (admin use).
  * When customerEmail is provided, only returns orders for that email (caller must match).
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
     const filters: any = {};
+    const userId = getCurrentUserId(req);
 
     if (req.query.status) {
       filters.status = req.query.status as string;
     }
 
-    if (req.query.customerEmail) {
-      const requestedEmail = (req.query.customerEmail as string).trim().toLowerCase();
-      const userId = getCurrentUserId(req);
+    // If userId query param, filter by user_id
+    if (req.query.userId) {
       if (!userId) {
         return res.status(401).json({ error: 'You must be logged in to view orders' });
       }
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
-      if (!user) {
-        return res.status(401).json({ error: 'User not found' });
-      }
-      const userEmail = user.email.trim().toLowerCase();
-      if (requestedEmail !== userEmail) {
+      // Users can only query their own orders, admins can query any
+      const admin = await isAdmin(userId);
+      if (!admin && req.query.userId !== userId) {
         return res.status(403).json({ error: 'You can only view your own orders' });
+      }
+      filters.userId = req.query.userId as string;
+    }
+
+    if (req.query.customerEmail) {
+      const requestedEmail = (req.query.customerEmail as string).trim().toLowerCase();
+      if (!userId) {
+        return res.status(401).json({ error: 'You must be logged in to view orders' });
+      }
+      // Admins can query any email
+      const admin = await isAdmin(userId);
+      if (!admin) {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+        if (!user) {
+          return res.status(401).json({ error: 'User not found' });
+        }
+        const userEmail = user.email.trim().toLowerCase();
+        if (requestedEmail !== userEmail) {
+          return res.status(403).json({ error: 'You can only view your own orders' });
+        }
       }
       filters.customerEmail = requestedEmail;
     }
@@ -60,8 +131,41 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/orders/check-email
+ * Check if an email is already used by another user account.
+ * Used during checkout to prevent email conflicts.
+ */
+router.post('/check-email', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const userId = getCurrentUserId(req);
+
+    // Check if email belongs to a different user account
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail } },
+      select: { id: true },
+    });
+
+    // If email belongs to another user (not the current logged-in user), it's taken
+    if (existingUser && existingUser.id !== userId) {
+      return res.json({ taken: true, message: 'This email is registered to another account' });
+    }
+
+    return res.json({ taken: false });
+  } catch (error: any) {
+    console.error('Error checking email:', error);
+    res.status(500).json({ error: 'Failed to check email' });
+  }
+});
+
+/**
  * GET /api/orders/:orderRef
- * Get single order by order_ref. Only the customer who placed the order can view it (must be logged in, email must match).
+ * Get single order by order_ref. Owner or admin can view.
  */
 router.get('/:orderRef', async (req: Request, res: Response) => {
   try {
@@ -85,15 +189,32 @@ router.get('/:orderRef', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'You must be logged in to view this order' });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
+    // Admin can view any order
+    const admin = await isAdmin(userId);
+    if (!admin) {
+      // Check by user_id first (primary), then fallback to email match
+      const rawOrder = await prisma.orders.findFirst({
+        where: { order_ref: orderRef },
+        select: { user_id: true, customer_email: true },
+      });
 
-    const orderEmail = (order.customer?.email || '').trim().toLowerCase();
-    const userEmail = user.email.trim().toLowerCase();
-    if (orderEmail !== userEmail) {
-      return res.status(403).json({ error: 'You can only view your own orders' });
+      if (rawOrder?.user_id) {
+        // Order has user_id - match by that
+        if (rawOrder.user_id !== userId) {
+          return res.status(403).json({ error: 'You can only view your own orders' });
+        }
+      } else {
+        // Legacy order without user_id - fallback to email match
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+        if (!user) {
+          return res.status(401).json({ error: 'User not found' });
+        }
+        const orderEmail = (order.customer?.email || '').trim().toLowerCase();
+        const userEmail = user.email.trim().toLowerCase();
+        if (orderEmail !== userEmail) {
+          return res.status(403).json({ error: 'You can only view your own orders' });
+        }
+      }
     }
 
     res.json(order);

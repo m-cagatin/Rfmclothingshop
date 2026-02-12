@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { CartItem } from '../components/CartDrawer';
 import { GcashPaymentModal } from '../components/GcashPaymentModal';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CheckoutPageProps {
   cartItems: CartItem[];
@@ -28,10 +29,12 @@ interface FormData {
 
 export function CheckoutPage({ cartItems, onClearCart }: CheckoutPageProps) {
   const navigate = useNavigate();
+  const { user, isLoggedIn } = useAuth();
   const [paymentType, setPaymentType] = useState<'partial' | 'full'>('full');
   const [partialAmount, setPartialAmount] = useState<number>(0);
   const [isGcashModalOpen, setIsGcashModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [emailError, setEmailError] = useState<string>('');
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
@@ -41,6 +44,22 @@ export function CheckoutPage({ cartItems, onClearCart }: CheckoutPageProps) {
     city: '',
     zip: '',
   });
+
+  // Auto-fill form from logged-in user data
+  useEffect(() => {
+    if (isLoggedIn && user) {
+      const nameParts = (user.name || '').split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      setFormData(prev => ({
+        ...prev,
+        firstName: prev.firstName || firstName,
+        lastName: prev.lastName || lastName,
+        email: prev.email || user.email || '',
+        phone: prev.phone || user.phone || '',
+      }));
+    }
+  }, [isLoggedIn, user]);
 
   // Calculate totals - handle empty cart
   const subtotal = (cartItems || []).reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -56,6 +75,34 @@ export function CheckoutPage({ cartItems, onClearCart }: CheckoutPageProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
     setFormData(prev => ({ ...prev, [id]: value }));
+    // Clear email error when user types
+    if (id === 'email') {
+      setEmailError('');
+    }
+  };
+
+  // Validate email on blur - check if it belongs to another user
+  const handleEmailBlur = async () => {
+    if (!formData.email) return;
+    try {
+      const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+      const response = await fetch(`${API_BASE}/api/orders/check-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: formData.email }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.taken) {
+          setEmailError(data.message || 'This email is registered to another account');
+        } else {
+          setEmailError('');
+        }
+      }
+    } catch {
+      // Silently fail - don't block checkout for network issues
+    }
   };
 
 
@@ -67,6 +114,13 @@ export function CheckoutPage({ cartItems, onClearCart }: CheckoutPageProps) {
       // Validate form data
       if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
         toast.error('Please fill in all required fields');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Block if email belongs to another account
+      if (emailError) {
+        toast.error(emailError);
         setIsProcessing(false);
         return;
       }
@@ -133,31 +187,43 @@ export function CheckoutPage({ cartItems, onClearCart }: CheckoutPageProps) {
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" required placeholder="John" onChange={handleInputChange} />
+                  <Input id="firstName" required placeholder="John" value={formData.firstName} onChange={handleInputChange} />
                 </div>
                 <div>
                   <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" required placeholder="Doe" onChange={handleInputChange} />
+                  <Input id="lastName" required placeholder="Doe" value={formData.lastName} onChange={handleInputChange} />
                 </div>
                 <div className="md:col-span-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" required placeholder="john@example.com" onChange={handleInputChange} />
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    required 
+                    placeholder="john@example.com" 
+                    value={formData.email} 
+                    onChange={handleInputChange} 
+                    onBlur={handleEmailBlur}
+                    className={emailError ? 'border-red-500' : ''}
+                  />
+                  {emailError && (
+                    <p className="text-xs text-red-500 mt-1">{emailError}</p>
+                  )}
                 </div>
                 <div className="md:col-span-2">
                   <Label htmlFor="address">Street Address</Label>
-                  <Input id="address" required placeholder="123 Main St" onChange={handleInputChange} />
+                  <Input id="address" required placeholder="123 Main St" value={formData.address} onChange={handleInputChange} />
                 </div>
                 <div>
                   <Label htmlFor="city">City</Label>
-                  <Input id="city" required placeholder="New York" onChange={handleInputChange} />
+                  <Input id="city" required placeholder="New York" value={formData.city} onChange={handleInputChange} />
                 </div>
                 <div>
                   <Label htmlFor="zip">ZIP Code</Label>
-                  <Input id="zip" required placeholder="10001" onChange={handleInputChange} />
+                  <Input id="zip" required placeholder="10001" value={formData.zip} onChange={handleInputChange} />
                 </div>
                 <div className="md:col-span-2">
                   <Label htmlFor="phone">Phone Number</Label>
-                  <Input id="phone" type="tel" required placeholder="+1 (555) 000-0000" onChange={handleInputChange} />
+                  <Input id="phone" type="tel" required placeholder="+1 (555) 000-0000" value={formData.phone} onChange={handleInputChange} />
                 </div>
               </div>
             </div>

@@ -116,11 +116,10 @@ export function OrderTrackingPage() {
 
       // Try to fetch from API if user is logged in
       if (user?.email) {
-        // Normalize email to match database storage (lowercase and trimmed)
-        const normalizedEmail = user.email.trim().toLowerCase();
-        console.log('Loading orders for email:', normalizedEmail);
+        // Use the new user_id based endpoint
+        console.log('Loading orders for user:', user.email);
         
-        const response = await fetch(`${API_BASE}/api/orders?customerEmail=${encodeURIComponent(normalizedEmail)}`, {
+        const response = await fetch(`${API_BASE}/api/orders/my-orders`, {
           credentials: 'include',
         });
 
@@ -128,6 +127,22 @@ export function OrderTrackingPage() {
           const data = await response.json();
           console.log('Orders fetched from API:', data);
           setOrders(Array.isArray(data) ? data : []);
+          setLoading(false);
+          return;
+        } else if (response.status === 401) {
+          // Fall back to email-based query for backward compatibility
+          const normalizedEmail = user.email.trim().toLowerCase();
+          const fallbackResponse = await fetch(`${API_BASE}/api/orders?customerEmail=${encodeURIComponent(normalizedEmail)}`, {
+            credentials: 'include',
+          });
+          if (fallbackResponse.ok) {
+            const data = await fallbackResponse.json();
+            setOrders(Array.isArray(data) ? data : []);
+            setLoading(false);
+            return;
+          }
+          console.error('Failed to fetch orders:', response.status);
+          setOrders([]);
           setLoading(false);
           return;
         } else {

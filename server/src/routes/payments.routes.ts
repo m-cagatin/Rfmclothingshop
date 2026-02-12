@@ -1,7 +1,21 @@
 import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import * as paymentsService from '../services/payments.service';
 
 const router = Router();
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'change-me-access';
+
+/** Get current user id from JWT cookie, or null if not authenticated */
+function getCurrentUserId(req: Request): string | null {
+  try {
+    const token = req.cookies?.access;
+    if (!token) return null;
+    const decoded = jwt.verify(token, ACCESS_SECRET) as { sub: string };
+    return decoded.sub;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * POST /api/payments
@@ -52,6 +66,9 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid payment type. Must be "partial" or "full"' });
     }
 
+    // Extract userId from JWT cookie (if logged in)
+    const userId = getCurrentUserId(req);
+
     const result = await paymentsService.submitPayment({
       orderId,
       amount: paymentAmount,
@@ -60,6 +77,7 @@ router.post('/', async (req: Request, res: Response) => {
       total: total ? parseFloat(total) : undefined,
       customerInfo: parsedCustomerInfo,
       orderItems: parsedOrderItems,
+      userId: userId || undefined,
     });
 
     res.status(201).json(result);

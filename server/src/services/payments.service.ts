@@ -10,6 +10,7 @@ interface SubmitPaymentInput {
   paymentType: 'partial' | 'full';
   referenceNumber: string;
   total?: number;
+  userId?: string;
   customerInfo?: {
     name: string;
     email: string;
@@ -49,7 +50,7 @@ interface PaymentResult {
  * If order doesn't exist, it will be created
  */
 export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentResult> {
-  const { orderId, amount, paymentType, referenceNumber, total, customerInfo, orderItems } = data;
+  const { orderId, amount, paymentType, referenceNumber, total, customerInfo, orderItems, userId } = data;
 
   // Validate reference number
   if (!referenceNumber || referenceNumber.trim() === '') {
@@ -250,6 +251,7 @@ export async function submitPayment(data: SubmitPaymentInput): Promise<PaymentRe
         data: {
           order_ref: orderId,
           customer_id: customer.CustomerId,
+          user_id: userId || null,
           customer_name: customerInfo.name,
           customer_email: customerInfo.email.trim().toLowerCase(),
           customer_phone: customerInfo.phone || null,

@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger 
 } from './ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { Search, User, Heart, ShoppingBag, Menu, LogOut, ShieldCheck } from 'lucide-react';
+import { Search, User, Heart, ShoppingBag, Menu, LogOut, ShieldCheck, Package } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
@@ -79,8 +79,35 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [activeOrderCount, setActiveOrderCount] = useState(0);
   const { requireAuth, isLoggedIn, user, logout } = useAuth();
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Fetch active order count for logged-in users
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setActiveOrderCount(0);
+      return;
+    }
+    const fetchOrderCount = async () => {
+      try {
+        const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000';
+        const response = await fetch(`${API_BASE}/api/orders/my-orders/count`, {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setActiveOrderCount(data.count || 0);
+        }
+      } catch {
+        // Silently fail
+      }
+    };
+    fetchOrderCount();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchOrderCount, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
   
   // Close search dropdown when clicking outside
   useEffect(() => {
@@ -307,6 +334,15 @@ export function Header({ onCartClick, onFavoritesClick, onLoginClick, cartItemsC
                 <DropdownMenuItem onClick={handleFavoriteClick}>
                   <Heart className="mr-2 size-4" />
                   My Favorites
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/order-tracking')}>
+                  <Package className="mr-2 size-4" />
+                  My Orders
+                  {activeOrderCount > 0 && (
+                    <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-black text-white text-xs">
+                      {activeOrderCount}
+                    </span>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleUserClick}>
